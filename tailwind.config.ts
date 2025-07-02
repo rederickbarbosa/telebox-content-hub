@@ -52,16 +52,24 @@ export default {
 					DEFAULT: 'hsl(var(--card))',
 					foreground: 'hsl(var(--card-foreground))'
 				},
-				sidebar: {
-					DEFAULT: 'hsl(var(--sidebar-background))',
-					foreground: 'hsl(var(--sidebar-foreground))',
-					primary: 'hsl(var(--sidebar-primary))',
-					'primary-foreground': 'hsl(var(--sidebar-primary-foreground))',
-					accent: 'hsl(var(--sidebar-accent))',
-					'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
-					border: 'hsl(var(--sidebar-border))',
-					ring: 'hsl(var(--sidebar-ring))'
+				// Cores específicas da TELEBOX
+				telebox: {
+					'gray-light': 'hsl(var(--telebox-gray-light))',
+					'gray-medium': 'hsl(var(--telebox-gray-medium))',
+					'gray-dark': 'hsl(var(--telebox-gray-dark))',
+					'blue': 'hsl(var(--telebox-blue))',
+					'blue-dark': 'hsl(var(--telebox-blue-dark))',
 				}
+			},
+			backgroundImage: {
+				'gradient-hero': 'var(--gradient-hero)',
+				'gradient-card': 'var(--gradient-card)',
+				'gradient-dark': 'var(--gradient-dark)',
+			},
+			boxShadow: {
+				'telebox-card': 'var(--shadow-card)',
+				'telebox-hero': 'var(--shadow-hero)',
+				'telebox-button': 'var(--shadow-button)',
 			},
 			borderRadius: {
 				lg: 'var(--radius)',

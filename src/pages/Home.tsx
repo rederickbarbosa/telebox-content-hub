@@ -1,0 +1,267 @@
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+
+const Home = () => {
+  const whatsappTestUrl = "https://wa.me/5511911837288?text=Olá%2C%20gostaria%20de%20fazer%20o%20teste%20grátis%20de%206%20horas%20da%20TELEBOX";
+  const whatsappContractUrl = "https://wa.me/5511911837288?text=Olá%2C%20quero%20assinar%20a%20TELEBOX%20e%20contratar%20um%20plano";
+
+  const planos = [
+    { duracao: "1 Mês", preco: "R$ 30,00", popular: false },
+    { duracao: "2 Meses", preco: "R$ 55,00", popular: true },
+    { duracao: "3 Meses", preco: "R$ 80,00", popular: false },
+  ];
+
+  const streamings = [
+    "Globoplay", "Netflix", "Disney+", "Prime Video", "Paramount+", 
+    "HBO MAX", "Apple TV+", "Amazon Prime", "Crunchyroll", "Pluto TV"
+  ];
+
+  const appGratuitos = [
+    {
+      nome: "Blink Player",
+      plataforma: "Android",
+      url: "https://play.google.com/store/apps/details?id=com.iptvBlinkPlayer",
+      logo: "https://play-lh.googleusercontent.com/B_RVRpwTQvCrQC7vNmuNixPkPs-C0FnCbN2Ixgc9UmXOAcg_RD-vgN_25IQV-FOhS5YD=w240-h480-rw"
+    },
+    {
+      nome: "Blink Player Pro",
+      plataforma: "iOS",
+      url: "https://apps.apple.com/us/app/blink-player-pro/id1635779666",
+      logo: "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/5f/5d/0a/5f5d0a9b-6c59-e1fb-be8d-b9ae75d719fc/AppIcon-0-0-1x_U007emarketing-0-8-0-0-sRGB-85-220.png/230x0w.webp"
+    },
+    {
+      nome: "Smarters Player Lite",
+      plataforma: "iOS",
+      url: "https://apps.apple.com/br/app/smarters-player-lite/id1628995509",
+      logo: "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/28/35/70/283570d2-298b-0d0f-cc0f-7f81b1e67d30/AppIcon-0-0-1x_U007emarketing-0-11-0-85-220.jpeg/230x0w.webp"
+    }
+  ];
+
+  return (
+    <div className="min-h-screen">
+      {/* Hero Section */}
+      <section className="relative bg-gradient-hero text-white py-20 overflow-hidden">
+        <div className="absolute inset-0 bg-black/20"></div>
+        <div className="container relative mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <img 
+            src="https://i.ibb.co/FxVWqFP/Logo-TBX-Home.png" 
+            alt="TELEBOX" 
+            className="h-20 w-auto mx-auto mb-8 filter brightness-0 invert"
+          />
+          <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">
+            Melhor IPTV do Brasil
+          </h1>
+          <p className="text-xl md:text-2xl mb-8 text-white/90 max-w-3xl mx-auto">
+            Acesse mais de <span className="font-bold text-yellow-300">200.000 conteúdos</span> dos principais streamings, 
+            canais abertos e fechados em uma única plataforma
+          </p>
+          
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
+            <Button 
+              size="xl" 
+              variant="whatsapp"
+              onClick={() => window.open(whatsappTestUrl, '_blank')}
+              className="text-lg"
+            >
+              🎉 Teste Grátis 6 Horas
+            </Button>
+            <Button 
+              size="xl" 
+              variant="premium"
+              onClick={() => window.open(whatsappContractUrl, '_blank')}
+              className="text-lg"
+            >
+              Contratar Agora
+            </Button>
+          </div>
+
+          {/* Streamings disponíveis */}
+          <div className="mb-8">
+            <p className="text-lg mb-4 text-white/80">Streamings inclusos:</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {streamings.map((streaming) => (
+                <Badge key={streaming} variant="secondary" className="bg-white/20 text-white hover:bg-white/30">
+                  {streaming}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Planos Section */}
+      <section className="py-20 bg-telebox-gray-light">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">Escolha seu Plano</h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              Preços especiais para você ter acesso completo ao melhor conteúdo
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
+            {planos.map((plano) => (
+              <Card key={plano.duracao} className={`relative ${plano.popular ? 'ring-2 ring-telebox-blue shadow-telebox-hero' : 'shadow-telebox-card'}`}>
+                {plano.popular && (
+                  <Badge className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-telebox-blue">
+                    Mais Popular
+                  </Badge>
+                )}
+                <CardHeader className="text-center">
+                  <CardTitle className="text-2xl">{plano.duracao}</CardTitle>
+                  <CardDescription className="text-3xl font-bold text-telebox-blue">
+                    {plano.preco}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="text-center">
+                  <ul className="space-y-3 mb-6">
+                    <li className="flex items-center justify-center">
+                      <span className="text-green-500 mr-2">✓</span>
+                      200k+ conteúdos
+                    </li>
+                    <li className="flex items-center justify-center">
+                      <span className="text-green-500 mr-2">✓</span>
+                      Todos os streamings
+                    </li>
+                    <li className="flex items-center justify-center">
+                      <span className="text-green-500 mr-2">✓</span>
+                      Canais HD/4K
+                    </li>
+                    <li className="flex items-center justify-center">
+                      <span className="text-green-500 mr-2">✓</span>
+                      Suporte incluído
+                    </li>
+                  </ul>
+                  <Button 
+                    className="w-full" 
+                    variant={plano.popular ? "hero" : "telebox"}
+                    onClick={() => window.open(whatsappContractUrl, '_blank')}
+                  >
+                    Contratar via WhatsApp
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+
+          <div className="text-center mt-8">
+            <p className="text-sm text-muted-foreground">
+              * Preços válidos para o sinal IPTV. Aplicativos pagos vendidos separadamente.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Apps Section */}
+      <section className="py-20">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">Como Assistir</h2>
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+              Disponível em múltiplas plataformas para sua comodidade
+            </p>
+          </div>
+
+          {/* Plataforma Web */}
+          <div className="mb-12">
+            <Card className="max-w-2xl mx-auto shadow-telebox-card">
+              <CardHeader className="text-center">
+                <CardTitle className="text-xl">🌐 Plataforma Web (Grátis para assinantes)</CardTitle>
+              </CardHeader>
+              <CardContent className="text-center">
+                <img 
+                  src="https://i.ibb.co/FxVWqFP/Logo-TBX-Home.png" 
+                  alt="TELEBOX Web" 
+                  className="h-16 w-auto mx-auto mb-4"
+                />
+                <p className="mb-4">Acesse direto do navegador, sem downloads</p>
+                <Button 
+                  variant="telebox"
+                  onClick={() => window.open("https://web.telebox.com.br", '_blank')}
+                >
+                  Acessar Plataforma Web
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Apps Gratuitos */}
+          <div className="mb-12">
+            <h3 className="text-2xl font-bold text-center mb-8">📱 Aplicativos GRATUITOS</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {appGratuitos.map((app) => (
+                <Card key={app.nome} className="shadow-telebox-card hover:shadow-telebox-hero transition-shadow">
+                  <CardHeader className="text-center">
+                    <img 
+                      src={app.logo} 
+                      alt={app.nome}
+                      className="h-16 w-16 mx-auto mb-4 rounded-lg"
+                    />
+                    <CardTitle className="text-lg">{app.nome}</CardTitle>
+                    <CardDescription>{app.plataforma}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="text-center">
+                    <Button 
+                      variant="outline" 
+                      className="w-full"
+                      onClick={() => window.open(app.url, '_blank')}
+                    >
+                      Download
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+
+          {/* Apps Pagos Smart TV */}
+          <div>
+            <h3 className="text-2xl font-bold text-center mb-4">📺 Smart TV (Apps Pagos)</h3>
+            <p className="text-center text-muted-foreground mb-8">
+              Para Smart TVs, temos aplicativos premium disponíveis. Entre em contato para mais informações.
+            </p>
+            <div className="text-center">
+              <Button 
+                variant="whatsapp"
+                onClick={() => window.open("https://wa.me/5511911837288?text=Gostaria%20de%20saber%20sobre%20os%20aplicativos%20para%20Smart%20TV", '_blank')}
+              >
+                Consultar Apps Smart TV
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Final */}
+      <section className="py-20 bg-gradient-hero text-white">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <h2 className="text-3xl md:text-4xl font-bold mb-4">
+            Pronto para começar?
+          </h2>
+          <p className="text-xl mb-8 text-white/90">
+            Teste grátis por 6 horas ou contrate seu plano agora mesmo!
+          </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Button 
+              size="xl" 
+              variant="whatsapp"
+              onClick={() => window.open(whatsappTestUrl, '_blank')}
+            >
+              Testar Grátis Agora
+            </Button>
+            <Button 
+              size="xl" 
+              variant="premium"
+              onClick={() => window.open(whatsappContractUrl, '_blank')}
+            >
+              Contratar Plano
+            </Button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+};
+
+export default Home;

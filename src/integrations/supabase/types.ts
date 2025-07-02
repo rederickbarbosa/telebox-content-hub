@@ -9,7 +9,172 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
-      [_ in never]: never
+      conteudos: {
+        Row: {
+          ano: number | null
+          backdrop_url: string | null
+          classificacao: number | null
+          created_at: string
+          descricao: string | null
+          disponivel: boolean | null
+          generos: string[] | null
+          id: string
+          m3u_url: string | null
+          nome: string
+          nome_original: string | null
+          pais: string | null
+          poster_url: string | null
+          tipo: string
+          tmdb_id: number | null
+          trailer_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          ano?: number | null
+          backdrop_url?: string | null
+          classificacao?: number | null
+          created_at?: string
+          descricao?: string | null
+          disponivel?: boolean | null
+          generos?: string[] | null
+          id?: string
+          m3u_url?: string | null
+          nome: string
+          nome_original?: string | null
+          pais?: string | null
+          poster_url?: string | null
+          tipo: string
+          tmdb_id?: number | null
+          trailer_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ano?: number | null
+          backdrop_url?: string | null
+          classificacao?: number | null
+          created_at?: string
+          descricao?: string | null
+          disponivel?: boolean | null
+          generos?: string[] | null
+          id?: string
+          m3u_url?: string | null
+          nome?: string
+          nome_original?: string | null
+          pais?: string | null
+          poster_url?: string | null
+          tipo?: string
+          tmdb_id?: number | null
+          trailer_url?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          nome: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          nome: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          nome?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      programacao: {
+        Row: {
+          canal_id: string | null
+          canal_nome: string
+          categoria: string | null
+          created_at: string
+          fim: string
+          id: string
+          inicio: string
+          programa_descricao: string | null
+          programa_nome: string
+        }
+        Insert: {
+          canal_id?: string | null
+          canal_nome: string
+          categoria?: string | null
+          created_at?: string
+          fim: string
+          id?: string
+          inicio: string
+          programa_descricao?: string | null
+          programa_nome: string
+        }
+        Update: {
+          canal_id?: string | null
+          canal_nome?: string
+          categoria?: string | null
+          created_at?: string
+          fim?: string
+          id?: string
+          inicio?: string
+          programa_descricao?: string | null
+          programa_nome?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "programacao_canal_id_fkey"
+            columns: ["canal_id"]
+            isOneToOne: false
+            referencedRelation: "conteudos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_content_status: {
+        Row: {
+          conteudo_id: string
+          created_at: string
+          id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          conteudo_id: string
+          created_at?: string
+          id?: string
+          status: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          conteudo_id?: string
+          created_at?: string
+          id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_content_status_conteudo_id_fkey"
+            columns: ["conteudo_id"]
+            isOneToOne: false
+            referencedRelation: "conteudos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
