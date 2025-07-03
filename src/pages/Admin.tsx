@@ -75,17 +75,22 @@ const Admin = () => {
   };
 
   const loadStats = async () => {
-    const [filmes, series, canais, users] = await Promise.all([
-      supabase.from('conteudos').select('id', { count: 'exact' }).eq('tipo', 'filme'),
-      supabase.from('conteudos').select('id', { count: 'exact' }).eq('tipo', 'serie'),
-      supabase.from('conteudos').select('id', { count: 'exact' }).eq('tipo', 'canal'),
+    const [conteudos, catalogo, users] = await Promise.all([
+      supabase.from('conteudos').select('tipo', { count: 'exact' }),
+      supabase.from('catalogo_m3u').select('tipo', { count: 'exact' }),
       supabase.from('profiles').select('id', { count: 'exact' })
     ]);
 
+    const conteudosFilmes = conteudos.data?.filter(c => c.tipo === 'filme').length || 0;
+    const conteudosSeries = conteudos.data?.filter(c => c.tipo === 'serie').length || 0;
+    const catalogoFilmes = catalogo.data?.filter(c => c.tipo === 'filme').length || 0;
+    const catalogoSeries = catalogo.data?.filter(c => c.tipo === 'serie').length || 0;
+    const catalogoCanais = catalogo.data?.filter(c => c.tipo === 'canal').length || 0;
+
     setStats({
-      totalFilmes: filmes.count || 0,
-      totalSeries: series.count || 0,
-      totalCanais: canais.count || 0,
+      totalFilmes: Math.max(conteudosFilmes, catalogoFilmes),
+      totalSeries: Math.max(conteudosSeries, catalogoSeries),
+      totalCanais: catalogoCanais,
       totalUsers: users.count || 0
     });
   };
@@ -116,16 +121,31 @@ const Admin = () => {
 
     setLoading(true);
     try {
-      // Here we would implement M3U parsing and conversion to JSON
-      // For now, just show a success message
-      toast({
-        title: "M3U processado",
-        description: "Lista M3U foi processada e convertida para JSON.",
+      const fileContent = await file.text();
+      
+      const response = await supabase.functions.invoke('process-m3u', {
+        body: {
+          m3uContent: fileContent,
+          userId: user.id
+        }
       });
-    } catch (error) {
+
+      if (response.error) {
+        throw new Error(response.error.message);
+      }
+
+      const result = response.data;
+      
+      toast({
+        title: "M3U processado com sucesso!",
+        description: `${result.totalChannels} canais processados: ${result.stats.filmes} filmes, ${result.stats.series} séries, ${result.stats.canais} canais.`,
+      });
+      
+      loadStats();
+    } catch (error: any) {
       toast({
         title: "Erro ao processar M3U",
-        description: "Ocorreu um erro ao processar o arquivo M3U.",
+        description: error.message || "Ocorreu um erro ao processar o arquivo M3U.",
         variant: "destructive",
       });
     } finally {
@@ -324,9 +344,38 @@ const Admin = () => {
                     </p>
                   </div>
                   
-                  <Button onClick={loadStats} className="w-full">
-                    Atualizar Estatísticas
-                  </Button>
+                  <div className="space-y-4">
+                    <Button onClick={loadStats} className="w-full">
+                      Atualizar Estatísticas
+                    </Button>
+                    
+                    <Button 
+                      onClick={async () => {
+                        setLoading(true);
+                        try {
+                          const response = await supabase.functions.invoke('fetch-epg');
+                          if (response.error) throw new Error(response.error.message);
+                          
+                          toast({
+                            title: "EPG atualizado!",
+                            description: `${response.data.programmes} programas de ${response.data.channels} canais atualizados.`,
+                          });
+                        } catch (error: any) {
+                          toast({
+                            title: "Erro ao atualizar EPG",
+                            description: error.message,
+                            variant: "destructive",
+                          });
+                        } finally {
+                          setLoading(false);
+                        }
+                      }}
+                      className="w-full"
+                      variant="outline"
+                    >
+                      Atualizar Programação (EPG)
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>

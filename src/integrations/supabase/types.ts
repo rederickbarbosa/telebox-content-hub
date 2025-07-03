@@ -75,6 +75,54 @@ export type Database = {
         }
         Relationships: []
       }
+      catalogo_m3u: {
+        Row: {
+          ativo: boolean | null
+          created_at: string | null
+          grupo: string | null
+          id: string
+          metadata: Json | null
+          nome: string
+          qualidade: string | null
+          regiao: string | null
+          tipo: string
+          tvg_id: string | null
+          tvg_logo: string | null
+          updated_at: string | null
+          url: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          created_at?: string | null
+          grupo?: string | null
+          id?: string
+          metadata?: Json | null
+          nome: string
+          qualidade?: string | null
+          regiao?: string | null
+          tipo: string
+          tvg_id?: string | null
+          tvg_logo?: string | null
+          updated_at?: string | null
+          url: string
+        }
+        Update: {
+          ativo?: boolean | null
+          created_at?: string | null
+          grupo?: string | null
+          id?: string
+          metadata?: Json | null
+          nome?: string
+          qualidade?: string | null
+          regiao?: string | null
+          tipo?: string
+          tvg_id?: string | null
+          tvg_logo?: string | null
+          updated_at?: string | null
+          url?: string
+        }
+        Relationships: []
+      }
       conteudos: {
         Row: {
           ano: number | null
