@@ -79,8 +79,7 @@ http://exemplo.com/filme1.m3u8`;
       
       const response = await supabase.functions.invoke('process-m3u', {
         body: {
-          m3uContent: testM3U,
-          userId: userId
+          m3uContent: testM3U
         }
       });
       

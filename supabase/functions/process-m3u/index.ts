@@ -28,7 +28,40 @@ serve(async (req) => {
       });
     }
 
+    // Criar cliente com service role para operações admin
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
+    // Extrair token JWT do header Authorization
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ 
+        error: 'Token de autorização não fornecido.' 
+      }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Criar cliente com token do usuário para verificação
+    const userSupabase = createClient(
+      supabaseUrl, 
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    );
+    
+    // Extrair usuário do JWT
+    const { data: { user }, error: userError } = await userSupabase.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    );
+    
+    if (userError || !user) {
+      console.error('Erro de autenticação:', userError);
+      return new Response(JSON.stringify({ 
+        error: 'Token de autorização inválido.' 
+      }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     let requestBody;
     try {
@@ -43,24 +76,24 @@ serve(async (req) => {
       });
     }
 
-    const { m3uContent, userId } = requestBody;
+    const { m3uContent } = requestBody;
 
-    if (!m3uContent || !userId) {
+    if (!m3uContent) {
       return new Response(JSON.stringify({ 
-        error: 'Dados obrigatórios não fornecidos (m3uContent, userId).' 
+        error: 'Conteúdo M3U não fornecido.' 
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.log('Processing M3U content for user:', userId);
+    console.log('Processing M3U content for user:', user.id);
 
     // Verificar se o usuário é admin
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('role')
-      .eq('user_id', userId)
+      .eq('user_id', user.id)
       .single();
 
     if (profileError || profile?.role !== 'admin') {
