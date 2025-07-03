@@ -10,6 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Settings, Upload, Database, Users, Bell } from "lucide-react";
+import M3UUploader from "@/components/admin/M3UUploader";
+import AppManager from "@/components/admin/AppManager";
+import NotificationManager from "@/components/admin/NotificationManager";
 
 const Admin = () => {
   const [user, setUser] = useState<any>(null);
@@ -115,43 +118,6 @@ const Admin = () => {
     }
   };
 
-  const handleM3UUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    setLoading(true);
-    try {
-      const fileContent = await file.text();
-      
-      const response = await supabase.functions.invoke('process-m3u', {
-        body: {
-          m3uContent: fileContent,
-          userId: user.id
-        }
-      });
-
-      if (response.error) {
-        throw new Error(response.error.message);
-      }
-
-      const result = response.data;
-      
-      toast({
-        title: "M3U processado com sucesso!",
-        description: `${result.totalChannels} canais processados: ${result.stats.filmes} filmes, ${result.stats.series} séries, ${result.stats.canais} canais.`,
-      });
-      
-      loadStats();
-    } catch (error: any) {
-      toast({
-        title: "Erro ao processar M3U",
-        description: error.message || "Ocorreu um erro ao processar o arquivo M3U.",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -230,10 +196,11 @@ const Admin = () => {
         </div>
 
         <Tabs defaultValue="configuracoes" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
             <TabsTrigger value="catalogo">Catálogo</TabsTrigger>
             <TabsTrigger value="apps">Aplicativos</TabsTrigger>
+            <TabsTrigger value="notificacoes">Notificações</TabsTrigger>
             <TabsTrigger value="usuarios">Usuários</TabsTrigger>
           </TabsList>
 
@@ -316,82 +283,86 @@ const Admin = () => {
                     </div>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
 
-          <TabsContent value="catalogo" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Upload className="h-5 w-5" />
-                  Atualizar Catálogo
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
                 <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="m3u-upload">Upload Lista M3U</Label>
-                    <Input
-                      id="m3u-upload"
-                      type="file"
-                      accept=".m3u,.m3u8"
-                      onChange={handleM3UUpload}
-                      className="mt-2"
-                    />
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Faça upload da lista M3U para atualizar o catálogo automaticamente
-                    </p>
-                  </div>
-                  
-                  <div className="space-y-4">
-                    <Button onClick={loadStats} className="w-full">
-                      Atualizar Estatísticas
-                    </Button>
-                    
-                    <Button 
-                      onClick={async () => {
-                        setLoading(true);
-                        try {
-                          const response = await supabase.functions.invoke('fetch-epg');
-                          if (response.error) throw new Error(response.error.message);
-                          
-                          toast({
-                            title: "EPG atualizado!",
-                            description: `${response.data.programmes} programas de ${response.data.channels} canais atualizados.`,
-                          });
-                        } catch (error: any) {
-                          toast({
-                            title: "Erro ao atualizar EPG",
-                            description: error.message,
-                            variant: "destructive",
-                          });
-                        } finally {
-                          setLoading(false);
-                        }
-                      }}
-                      className="w-full"
-                      variant="outline"
-                    >
-                      Atualizar Programação (EPG)
-                    </Button>
+                  <h3 className="text-lg font-semibold">APIs e Integrações</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="tmdb_token">Token TMDB</Label>
+                      <Input
+                        id="tmdb_token"
+                        value={settings.tmdb_token || ''}
+                        onChange={(e) => updateSetting('tmdb_token', e.target.value)}
+                        placeholder="Token da API do TMDB"
+                        type="password"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="epg_url">URL do EPG (XMLTV)</Label>
+                      <Input
+                        id="epg_url"
+                        value={settings.epg_url || ''}
+                        onChange={(e) => updateSetting('epg_url', e.target.value)}
+                        placeholder="http://exemplo.com/xmltv.php?username=...&password=..."
+                      />
+                    </div>
                   </div>
                 </div>
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="apps" className="space-y-6">
+          <TabsContent value="catalogo" className="space-y-6">
+            <M3UUploader userId={user.id} onUploadComplete={loadStats} />
+            
             <Card>
               <CardHeader>
-                <CardTitle>Gerenciar Aplicativos</CardTitle>
+                <CardTitle className="flex items-center gap-2">
+                  <Database className="h-5 w-5" />
+                  Ações do Sistema
+                </CardTitle>
               </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  Funcionalidade de gerenciamento de aplicativos será implementada em breve.
-                </p>
+              <CardContent className="space-y-4">
+                <Button onClick={loadStats} className="w-full">
+                  Atualizar Estatísticas
+                </Button>
+                
+                <Button 
+                  onClick={async () => {
+                    setLoading(true);
+                    try {
+                      const response = await supabase.functions.invoke('fetch-epg');
+                      if (response.error) throw new Error(response.error.message);
+                      
+                      toast({
+                        title: "EPG atualizado!",
+                        description: `${response.data.programmes} programas de ${response.data.channels} canais atualizados.`,
+                      });
+                    } catch (error: any) {
+                      toast({
+                        title: "Erro ao atualizar EPG",
+                        description: error.message,
+                        variant: "destructive",
+                      });
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  className="w-full"
+                  variant="outline"
+                >
+                  Atualizar Programação (EPG)
+                </Button>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="apps" className="space-y-6">
+            <AppManager />
+          </TabsContent>
+
+          <TabsContent value="notificacoes" className="space-y-6">
+            <NotificationManager />
           </TabsContent>
 
           <TabsContent value="usuarios" className="space-y-6">
