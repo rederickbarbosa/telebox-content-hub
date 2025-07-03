@@ -42,15 +42,50 @@ const Catalogo = () => {
   const fetchConteudos = async () => {
     try {
       // Buscar do catálogo M3U primeiro, depois dos conteúdos enriquecidos
-      const [catalogoResponse, conteudosResponse] = await Promise.all([
+      const [catalogoResponse, conteudosResponse, settingsResponse] = await Promise.all([
         supabase.from('catalogo_m3u').select('*').eq('ativo', true),
-        supabase.from('conteudos').select('*').eq('disponivel', true)
+        supabase.from('conteudos').select('*').eq('disponivel', true),
+        supabase.from('admin_settings').select('setting_value').eq('setting_key', 'catalog_json_file').single()
       ]);
 
       let allContent = [];
 
-      // Processar catálogo M3U
-      if (catalogoResponse.data) {
+      // Tentar carregar do Storage se disponível
+      if (settingsResponse.data?.setting_value) {
+        try {
+          const { data: storageData } = await supabase.storage
+            .from('catalog-json')
+            .download(settingsResponse.data.setting_value);
+          
+          if (storageData) {
+            const jsonText = await storageData.text();
+            const catalogData = JSON.parse(jsonText);
+            
+            if (catalogData.channels) {
+              const storageContent = catalogData.channels.map((item: any) => ({
+                id: `storage-${Date.now()}-${Math.random()}`,
+                nome: item.nome,
+                tipo: item.tipo,
+                generos: item.grupo ? [item.grupo] : [],
+                ano: null,
+                poster_url: item.tvg_logo || '',
+                backdrop_url: '',
+                descricao: '',
+                classificacao: 0,
+                tmdb_id: 0,
+                trailer_url: '',
+                source: 'storage'
+              }));
+              allContent = [...allContent, ...storageContent];
+            }
+          }
+        } catch (storageError) {
+          console.warn('Erro ao carregar do Storage, usando banco:', storageError);
+        }
+      }
+
+      // Se não conseguiu carregar do Storage, usar dados do banco
+      if (allContent.length === 0 && catalogoResponse.data) {
         const catalogoContent = catalogoResponse.data.map(item => ({
           id: item.id,
           nome: item.nome,
@@ -77,10 +112,17 @@ const Catalogo = () => {
         allContent = [...allContent, ...enrichedContent];
       }
 
-      // Remover duplicatas baseado no nome
-      const uniqueContent = allContent.filter((item, index, self) => 
-        index === self.findIndex(c => c.nome.toLowerCase() === item.nome.toLowerCase() && c.tipo === item.tipo)
-      );
+      // Remover duplicatas baseado no nome e priorizar conteúdos enriquecidos
+      const uniqueContent = allContent.filter((item, index, self) => {
+        const duplicateIndex = self.findIndex(c => 
+          c.nome.toLowerCase() === item.nome.toLowerCase() && c.tipo === item.tipo
+        );
+        // Se é duplicata, manter apenas se for de fonte enriquecida ou se for o primeiro
+        if (duplicateIndex !== index) {
+          return item.source === 'conteudos' && self[duplicateIndex].source !== 'conteudos';
+        }
+        return true;
+      });
 
       setConteudos(uniqueContent);
     } catch (error) {

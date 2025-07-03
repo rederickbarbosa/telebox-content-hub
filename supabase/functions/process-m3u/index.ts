@@ -31,6 +31,7 @@ serve(async (req) => {
       .single();
 
     if (profileError || profile?.role !== 'admin') {
+      console.error('Acesso negado:', profileError);
       return new Response(JSON.stringify({ 
         error: 'Acesso negado. Apenas administradores podem processar M3U.' 
       }), {
@@ -97,6 +98,31 @@ serve(async (req) => {
 
     console.log(`Processados ${channels.length} canais`);
 
+    // Criar JSON estruturado
+    const catalogJson = {
+      metadata: {
+        generated_at: new Date().toISOString(),
+        total_channels: channels.length,
+        converter: "TELEBOX M3U Converter",
+        version: "1.0"
+      },
+      channels: channels
+    };
+
+    // Salvar JSON no Storage
+    const jsonFileName = `catalog-${Date.now()}.json`;
+    const { error: uploadError } = await supabase.storage
+      .from('catalog-json')
+      .upload(jsonFileName, JSON.stringify(catalogJson, null, 2), {
+        contentType: 'application/json',
+        upsert: true
+      });
+
+    if (uploadError) {
+      console.error('Erro ao fazer upload do JSON:', uploadError);
+      throw new Error('Erro ao salvar catálogo no storage');
+    }
+
     // Limpar catálogo anterior
     await supabase.from('catalogo_m3u').delete().neq('id', '00000000-0000-0000-0000-000000000000');
 
@@ -113,11 +139,19 @@ serve(async (req) => {
     // Atualizar contadores no conteudos
     await updateContentCounts(supabase, channels);
 
-    console.log('M3U processado com sucesso');
+    // Salvar referência do arquivo JSON nas configurações
+    await supabase.rpc('upsert_admin_setting', {
+      key: 'catalog_json_file',
+      value: jsonFileName,
+      description_text: 'Arquivo JSON do catálogo atual'
+    });
+
+    console.log('M3U processado com sucesso, JSON salvo:', jsonFileName);
 
     return new Response(JSON.stringify({ 
       success: true, 
       totalChannels: channels.length,
+      jsonFile: jsonFileName,
       stats: {
         filmes: channels.filter(c => c.tipo === 'filme').length,
         series: channels.filter(c => c.tipo === 'serie').length,

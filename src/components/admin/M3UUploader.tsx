@@ -63,7 +63,7 @@ const M3UUploader = ({ userId, onUploadComplete }: M3UUploaderProps) => {
       
       toast({
         title: "M3U processado com sucesso!",
-        description: `${result.totalChannels} canais processados: ${result.stats.filmes} filmes, ${result.stats.series} séries, ${result.stats.canais} canais.`,
+        description: `${result.totalChannels} canais processados: ${result.stats.filmes} filmes, ${result.stats.series} séries, ${result.stats.canais} canais. JSON salvo: ${result.jsonFile}`,
       });
       
       onUploadComplete();

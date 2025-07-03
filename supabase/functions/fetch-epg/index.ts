@@ -19,6 +19,8 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
+    console.log('Iniciando busca do EPG...');
+
     // Buscar URL do EPG nas configurações
     const { data: settings } = await supabase
       .from('admin_settings')
@@ -37,17 +39,23 @@ serve(async (req) => {
     const response = await fetch(epgUrl, {
       signal: controller.signal,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; TELEBOX/1.0)'
+        'User-Agent': 'Mozilla/5.0 (compatible; TELEBOX/1.0)',
+        'Accept': 'application/xml, text/xml, */*'
       }
     });
     clearTimeout(timeoutId);
     
     if (!response.ok) {
+      console.error(`Erro HTTP ao buscar EPG: ${response.status} - ${response.statusText}`);
       throw new Error(`Erro ao buscar EPG: ${response.status} - ${response.statusText}`);
     }
 
     const xmlText = await response.text();
     console.log('XML EPG obtido, tamanho:', xmlText.length);
+
+    if (!xmlText || xmlText.length < 100) {
+      throw new Error('EPG vazio ou inválido');
+    }
 
     // Parse XML usando DOMParser
     const parser = new DOMParser();
@@ -56,67 +64,92 @@ serve(async (req) => {
     // Verificar se houve erro no parsing
     const parserError = xmlDoc.querySelector('parsererror');
     if (parserError) {
+      console.error('Erro no parse XML:', parserError.textContent);
       throw new Error('Erro ao fazer parse do XML EPG: ' + parserError.textContent);
     }
 
     // Extrair canais
-    const channels = Array.from(xmlDoc.querySelectorAll('channel')).map(channel => ({
-      id: channel.getAttribute('id') || '',
-      name: channel.querySelector('display-name')?.textContent || '',
-      icon: channel.querySelector('icon')?.getAttribute('src') || ''
-    }));
+    const channelElements = xmlDoc.querySelectorAll('channel');
+    const channels = Array.from(channelElements).map(channel => {
+      const displayName = channel.querySelector('display-name')?.textContent || '';
+      const icon = channel.querySelector('icon')?.getAttribute('src') || '';
+      
+      return {
+        id: channel.getAttribute('id') || '',
+        name: displayName,
+        icon: icon
+      };
+    });
 
-    // Extrair programas (apenas futuros)
+    console.log(`Encontrados ${channels.length} canais`);
+
+    // Extrair programas (apenas futuros e atuais)
     const now = new Date();
     const programmes = Array.from(xmlDoc.querySelectorAll('programme')).map(programme => {
       const startTime = parseXMLTime(programme.getAttribute('start') || '');
       const stopTime = parseXMLTime(programme.getAttribute('stop') || '');
+      const title = programme.querySelector('title')?.textContent || '';
+      const desc = programme.querySelector('desc')?.textContent || '';
+      const category = programme.querySelector('category')?.textContent || '';
+      const channelId = programme.getAttribute('channel') || '';
       
       return {
-        channel: programme.getAttribute('channel') || '',
-        title: programme.querySelector('title')?.textContent || '',
-        desc: programme.querySelector('desc')?.textContent || '',
+        channel: channelId,
+        title: title,
+        desc: desc,
         start: startTime,
         stop: stopTime,
-        category: programme.querySelector('category')?.textContent || ''
+        category: category
       };
     }).filter(programme => {
-      // Apenas programas atuais e futuros
-      return programme.start && programme.start >= now;
+      // Apenas programas atuais e futuros (próximas 24 horas)
+      if (!programme.start) return false;
+      const maxTime = new Date(now.getTime() + 24 * 60 * 60 * 1000); // 24 horas
+      return programme.start >= now && programme.start <= maxTime;
     });
 
-    console.log(`Encontrados ${channels.length} canais e ${programmes.length} programas`);
+    console.log(`Encontrados ${programmes.length} programas futuros`);
 
-    // Limpar programação anterior
-    await supabase.from('programacao').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    // Limpar programação anterior (apenas dados antigos)
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    await supabase.from('programacao').delete().lt('fim', yesterday.toISOString());
 
     // Inserir nova programação
-    const programmesToInsert = programmes.map(programme => ({
-      canal_id: programme.channel,
-      canal_nome: channels.find(c => c.id === programme.channel)?.name || programme.channel,
-      programa_nome: programme.title,
-      programa_descricao: programme.desc,
-      inicio: programme.start.toISOString(),
-      fim: programme.stop?.toISOString() || new Date(programme.start.getTime() + 60 * 60 * 1000).toISOString(),
-      categoria: programme.category
-    }));
+    const programmesToInsert = programmes.map(programme => {
+      const channelName = channels.find(c => c.id === programme.channel)?.name || programme.channel;
+      
+      return {
+        canal_id: programme.channel,
+        canal_nome: channelName,
+        programa_nome: programme.title,
+        programa_descricao: programme.desc,
+        inicio: programme.start?.toISOString() || new Date().toISOString(),
+        fim: programme.stop?.toISOString() || new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+        categoria: programme.category
+      };
+    }).filter(p => p.programa_nome); // Apenas programas com nome
 
-    // Inserir em lotes
-    const batchSize = 500;
+    console.log(`Preparados ${programmesToInsert.length} programas para inserção`);
+
+    // Inserir em lotes menores
+    const batchSize = 200;
+    let insertedCount = 0;
     for (let i = 0; i < programmesToInsert.length; i += batchSize) {
       const batch = programmesToInsert.slice(i, i + batchSize);
       const { error } = await supabase.from('programacao').insert(batch);
       if (error) {
         console.error('Erro ao inserir lote de programação:', error);
+      } else {
+        insertedCount += batch.length;
       }
     }
 
-    console.log('EPG processado com sucesso');
+    console.log(`EPG processado com sucesso: ${insertedCount} programas inseridos`);
 
     return new Response(JSON.stringify({
       success: true,
       channels: channels.length,
-      programmes: programmes.length,
+      programmes: insertedCount,
       updated_at: new Date().toISOString()
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -125,7 +158,8 @@ serve(async (req) => {
   } catch (error) {
     console.error('Erro no processamento EPG:', error);
     return new Response(JSON.stringify({ 
-      error: error.message || 'Erro interno do servidor' 
+      error: error.message || 'Erro interno do servidor',
+      details: error.toString()
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -136,32 +170,37 @@ serve(async (req) => {
 function parseXMLTime(xmlTime: string): Date | null {
   if (!xmlTime) return null;
   
-  // Formato: YYYYMMDDHHMMSS ZZZZZ
-  const match = xmlTime.match(/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s*([+-]\d{4})?/);
-  if (!match) return null;
-  
-  const [, year, month, day, hour, minute, second, timezone] = match;
-  
-  // Criar data em UTC primeiro
-  const date = new Date();
-  date.setUTCFullYear(parseInt(year));
-  date.setUTCMonth(parseInt(month) - 1);
-  date.setUTCDate(parseInt(day));
-  date.setUTCHours(parseInt(hour));
-  date.setUTCMinutes(parseInt(minute));
-  date.setUTCSeconds(parseInt(second));
-  date.setUTCMilliseconds(0);
-  
-  // Ajustar timezone se fornecido
-  if (timezone) {
-    const sign = timezone[0] === '+' ? 1 : -1;
-    const tzHours = parseInt(timezone.slice(1, 3));
-    const tzMinutes = parseInt(timezone.slice(3, 5));
-    const offsetMinutes = sign * (tzHours * 60 + tzMinutes);
+  try {
+    // Formato: YYYYMMDDHHMMSS ZZZZZ
+    const match = xmlTime.match(/(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\s*([+-]\d{4})?/);
+    if (!match) return null;
     
-    // Ajustar para UTC
-    date.setUTCMinutes(date.getUTCMinutes() - offsetMinutes);
+    const [, year, month, day, hour, minute, second, timezone] = match;
+    
+    // Criar data em UTC primeiro
+    const date = new Date();
+    date.setUTCFullYear(parseInt(year));
+    date.setUTCMonth(parseInt(month) - 1);
+    date.setUTCDate(parseInt(day));
+    date.setUTCHours(parseInt(hour));
+    date.setUTCMinutes(parseInt(minute));
+    date.setUTCSeconds(parseInt(second));
+    date.setUTCMilliseconds(0);
+    
+    // Ajustar timezone se fornecido
+    if (timezone) {
+      const sign = timezone[0] === '+' ? 1 : -1;
+      const tzHours = parseInt(timezone.slice(1, 3));
+      const tzMinutes = parseInt(timezone.slice(3, 5));
+      const offsetMinutes = sign * (tzHours * 60 + tzMinutes);
+      
+      // Ajustar para UTC
+      date.setUTCMinutes(date.getUTCMinutes() - offsetMinutes);
+    }
+    
+    return date;
+  } catch (error) {
+    console.error('Erro ao fazer parse do tempo XML:', xmlTime, error);
+    return null;
   }
-  
-  return date;
 }
