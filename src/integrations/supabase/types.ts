@@ -9,6 +9,72 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      admin_settings: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          setting_key: string
+          setting_value: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          setting_key: string
+          setting_value: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          setting_key?: string
+          setting_value?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      apps: {
+        Row: {
+          ativo: boolean | null
+          created_at: string | null
+          destaque: boolean | null
+          download_url: string | null
+          id: string
+          logo_url: string | null
+          nome: string
+          plataforma: string
+          tipo: string
+          updated_at: string | null
+        }
+        Insert: {
+          ativo?: boolean | null
+          created_at?: string | null
+          destaque?: boolean | null
+          download_url?: string | null
+          id?: string
+          logo_url?: string | null
+          nome: string
+          plataforma: string
+          tipo: string
+          updated_at?: string | null
+        }
+        Update: {
+          ativo?: boolean | null
+          created_at?: string | null
+          destaque?: boolean | null
+          download_url?: string | null
+          id?: string
+          logo_url?: string | null
+          nome?: string
+          plataforma?: string
+          tipo?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       conteudos: {
         Row: {
           ano: number | null
@@ -69,28 +135,81 @@ export type Database = {
         }
         Relationships: []
       }
+      notificacoes: {
+        Row: {
+          canal_nome: string | null
+          conteudo_id: string | null
+          created_at: string | null
+          data_envio: string | null
+          id: string
+          mensagem: string
+          status: string | null
+          tipo: string
+          user_id: string
+        }
+        Insert: {
+          canal_nome?: string | null
+          conteudo_id?: string | null
+          created_at?: string | null
+          data_envio?: string | null
+          id?: string
+          mensagem: string
+          status?: string | null
+          tipo: string
+          user_id: string
+        }
+        Update: {
+          canal_nome?: string | null
+          conteudo_id?: string | null
+          created_at?: string | null
+          data_envio?: string | null
+          id?: string
+          mensagem?: string
+          status?: string | null
+          tipo?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notificacoes_conteudo_id_fkey"
+            columns: ["conteudo_id"]
+            isOneToOne: false
+            referencedRelation: "conteudos"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           created_at: string
           email: string
+          foto_url: string | null
           id: string
           nome: string
+          role: Database["public"]["Enums"]["user_role"] | null
+          time_favorito: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
           created_at?: string
           email: string
+          foto_url?: string | null
           id?: string
           nome: string
+          role?: Database["public"]["Enums"]["user_role"] | null
+          time_favorito?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
           created_at?: string
           email?: string
+          foto_url?: string | null
           id?: string
           nome?: string
+          role?: Database["public"]["Enums"]["user_role"] | null
+          time_favorito?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -183,7 +302,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      user_role: "user" | "admin"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -298,6 +417,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      user_role: ["user", "admin"],
+    },
   },
 } as const

@@ -68,9 +68,9 @@ const Home = () => {
             </Button>
             <Button 
               size="xl" 
-              variant="premium"
+              variant="hero"
               onClick={() => window.open(whatsappContractUrl, '_blank')}
-              className="text-lg"
+              className="text-lg bg-yellow-400 text-black hover:bg-yellow-500"
             >
               Contratar Agora
             </Button>
@@ -223,8 +223,8 @@ const Home = () => {
             </p>
             <div className="text-center">
               <Button 
-                variant="whatsapp"
-                onClick={() => window.open("https://wa.me/5511911837288?text=Gostaria%20de%20saber%20sobre%20os%20aplicativos%20para%20Smart%20TV", '_blank')}
+                variant="telebox"
+                onClick={() => window.location.href = '/aplicativos'}
               >
                 Consultar Apps Smart TV
               </Button>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,7 +10,24 @@ interface HeaderProps {
 
 const Header = ({ user }: HeaderProps) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    const checkAdminRole = async () => {
+      if (user) {
+        const { data } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('user_id', user.id)
+          .single();
+        
+        setIsAdmin(data?.role === 'admin');
+      }
+    };
+    
+    checkAdminRole();
+  }, [user]);
 
   const handleSignOut = async () => {
     const { error } = await supabase.auth.signOut();
@@ -58,6 +75,14 @@ const Header = ({ user }: HeaderProps) => {
             <Link to="/aplicativos" className="text-foreground hover:text-telebox-blue transition-colors font-medium">
               Aplicativos
             </Link>
+            <Link to="/banco" className="text-foreground hover:text-telebox-blue transition-colors font-medium">
+              Banco de Séries
+            </Link>
+            {isAdmin && (
+              <Link to="/admin" className="text-foreground hover:text-telebox-blue transition-colors font-medium">
+                Administrador
+              </Link>
+            )}
           </nav>
 
           {/* Action Buttons */}
@@ -123,6 +148,14 @@ const Header = ({ user }: HeaderProps) => {
               <Link to="/aplicativos" className="text-foreground hover:text-telebox-blue transition-colors font-medium py-2">
                 Aplicativos
               </Link>
+              <Link to="/banco" className="text-foreground hover:text-telebox-blue transition-colors font-medium py-2">
+                Banco de Séries
+              </Link>
+              {isAdmin && (
+                <Link to="/admin" className="text-foreground hover:text-telebox-blue transition-colors font-medium py-2">
+                  Administrador
+                </Link>
+              )}
               <div className="flex flex-col space-y-2 pt-4">
                 <Button 
                   size="sm" 

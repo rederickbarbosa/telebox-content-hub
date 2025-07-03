@@ -15,6 +15,7 @@ import Programacao from "./pages/Programacao";
 import Aplicativos from "./pages/Aplicativos";
 import Conta from "./pages/Conta";
 import Banco from "./pages/Banco";
+import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -76,6 +77,7 @@ const App = () => {
                 <Route path="/aplicativos" element={<Aplicativos />} />
                 <Route path="/conta" element={<Conta />} />
                 <Route path="/banco" element={<Banco />} />
+                <Route path="/admin" element={<Admin />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </main>
