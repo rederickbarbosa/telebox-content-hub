@@ -41,14 +41,48 @@ const Catalogo = () => {
 
   const fetchConteudos = async () => {
     try {
-      const { data, error } = await supabase
-        .from('conteudos')
-        .select('*')
-        .eq('disponivel', true)
-        .order('nome');
+      // Buscar do catálogo M3U primeiro, depois dos conteúdos enriquecidos
+      const [catalogoResponse, conteudosResponse] = await Promise.all([
+        supabase.from('catalogo_m3u').select('*').eq('ativo', true),
+        supabase.from('conteudos').select('*').eq('disponivel', true)
+      ]);
 
-      if (error) throw error;
-      setConteudos(data || []);
+      let allContent = [];
+
+      // Processar catálogo M3U
+      if (catalogoResponse.data) {
+        const catalogoContent = catalogoResponse.data.map(item => ({
+          id: item.id,
+          nome: item.nome,
+          tipo: item.tipo,
+          generos: item.grupo ? [item.grupo] : [],
+          ano: null,
+          poster_url: item.tvg_logo || '',
+          backdrop_url: '',
+          descricao: '',
+          classificacao: 0,
+          tmdb_id: 0,
+          trailer_url: '',
+          source: 'catalogo_m3u'
+        }));
+        allContent = [...allContent, ...catalogoContent];
+      }
+
+      // Processar conteúdos enriquecidos
+      if (conteudosResponse.data) {
+        const enrichedContent = conteudosResponse.data.map(item => ({
+          ...item,
+          source: 'conteudos'
+        }));
+        allContent = [...allContent, ...enrichedContent];
+      }
+
+      // Remover duplicatas baseado no nome
+      const uniqueContent = allContent.filter((item, index, self) => 
+        index === self.findIndex(c => c.nome.toLowerCase() === item.nome.toLowerCase() && c.tipo === item.tipo)
+      );
+
+      setConteudos(uniqueContent);
     } catch (error) {
       console.error('Erro ao buscar conteúdos:', error);
     } finally {
@@ -82,14 +116,10 @@ const Catalogo = () => {
     setFilteredConteudos(filtered);
   };
 
-  const redirectToWatch = (conteudo: Conteudo) => {
-    const baseUrls = {
-      'filme': 'https://web.telebox.com.br/w/movies?search=',
-      'serie': 'https://web.telebox.com.br/w/series?search=',
-      'canal': 'https://web.telebox.com.br/w/channels?search='
-    };
-    
-    const url = baseUrls[conteudo.tipo as keyof typeof baseUrls] + encodeURIComponent(conteudo.nome);
+  const redirectToWatch = (conteudo: any) => {
+    const baseUrl = "https://web.telebox.com.br/w";
+    const type = conteudo.tipo === "filme" ? "movie" : conteudo.tipo === "serie" ? "tv" : "live";
+    const url = `${baseUrl}/${type}?search=${encodeURIComponent(conteudo.nome)}`;
     window.open(url, '_blank');
   };
 

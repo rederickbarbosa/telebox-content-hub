@@ -1,10 +1,89 @@
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const Home = () => {
-  const whatsappTestUrl = "https://wa.me/5511911837288?text=Olá%2C%20gostaria%20de%20fazer%20o%20teste%20grátis%20de%206%20horas%20da%20TELEBOX";
-  const whatsappContractUrl = "https://wa.me/5511911837288?text=Olá%2C%20quero%20assinar%20a%20TELEBOX%20e%20contratar%20um%20plano";
+  const [settings, setSettings] = useState<any>({});
+  const [featuredContent, setFeaturedContent] = useState<any[]>([]);
+  const [backgroundImage, setBackgroundImage] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    loadSettings();
+    loadFeaturedContent();
+  }, []);
+
+  const loadSettings = async () => {
+    try {
+      const { data } = await supabase
+        .from('admin_settings')
+        .select('*');
+      
+      if (data) {
+        const settingsObj = data.reduce((acc: any, setting: any) => {
+          acc[setting.setting_key] = setting.setting_value;
+          return acc;
+        }, {});
+        setSettings(settingsObj);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar configurações:', error);
+    }
+  };
+
+  const loadFeaturedContent = async () => {
+    try {
+      // Buscar conteúdos em destaque
+      const [conteudosResponse, catalogoResponse] = await Promise.all([
+        supabase.from('conteudos').select('*').eq('disponivel', true).in('tipo', ['filme', 'serie']).limit(4),
+        supabase.from('catalogo_m3u').select('*').eq('ativo', true).in('tipo', ['filme', 'serie']).limit(4)
+      ]);
+
+      let content = [];
+      
+      if (conteudosResponse.data && conteudosResponse.data.length > 0) {
+        content = conteudosResponse.data;
+        // Usar backdrop da TMDB para fundo
+        if (content[0]?.backdrop_url) {
+          setBackgroundImage(content[0].backdrop_url);
+        }
+      } else if (catalogoResponse.data && catalogoResponse.data.length > 0) {
+        content = catalogoResponse.data.map(item => ({
+          id: item.id,
+          nome: item.nome,
+          tipo: item.tipo,
+          poster_url: item.tvg_logo,
+          generos: item.grupo ? [item.grupo] : [],
+          ano: null,
+          descricao: '',
+          classificacao: 0
+        }));
+      }
+
+      // Pegar 2 filmes e 2 séries se possível
+      const filmes = content.filter(c => c.tipo === 'filme').slice(0, 2);
+      const series = content.filter(c => c.tipo === 'serie').slice(0, 2);
+      const featured = [...filmes, ...series];
+
+      setFeaturedContent(featured);
+    } catch (error) {
+      console.error('Erro ao carregar conteúdo em destaque:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getTestPeriod = () => {
+    return settings.teste_horas ? `${settings.teste_horas} horas` : "6 horas";
+  };
+
+  const whatsappTestUrl = `https://wa.me/${settings.whatsapp_numero || '5511911837288'}?text=Olá%2C%20gostaria%20de%20fazer%20o%20teste%20grátis%20de%20${getTestPeriod()}%20da%20TELEBOX`;
+  const whatsappContractUrl = `https://wa.me/${settings.whatsapp_numero || '5511911837288'}?text=Olá%2C%20quero%20assinar%20a%20TELEBOX%20e%20contratar%20um%20plano`;
 
   const planos = [
     { duracao: "1 Mês", preco: "R$ 30,00", popular: true },
@@ -38,11 +117,26 @@ const Home = () => {
     }
   ];
 
+  const redirectToWatch = (content: any) => {
+    const baseUrl = "https://web.telebox.com.br/w";
+    const type = content.tipo === "filme" ? "movie" : "tv";
+    const url = `${baseUrl}/${type}?search=${encodeURIComponent(content.nome)}`;
+    window.open(url, '_blank');
+  };
+
   return (
     <div className="min-h-screen">
-      {/* Hero Section */}
-      <section className="relative bg-gradient-hero text-white py-20 overflow-hidden">
-        <div className="absolute inset-0 bg-black/20"></div>
+      {/* Hero Section with Dynamic Background */}
+      <section 
+        className="relative text-white py-20 overflow-hidden"
+        style={{
+          background: backgroundImage 
+            ? `linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.6)), url(${backgroundImage})`
+            : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center'
+        }}
+      >
         <div className="container relative mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <img 
             src="/lovable-uploads/f8c39ee0-2f4f-48db-8eec-77de87d513ee.png" 
@@ -50,11 +144,10 @@ const Home = () => {
             className="h-20 w-auto mx-auto mb-8"
           />
           <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">
-            Melhor IPTV do Brasil
+            {settings.site_titulo || 'Melhor IPTV do Brasil'}
           </h1>
           <p className="text-xl md:text-2xl mb-8 text-white/90 max-w-3xl mx-auto">
-            Acesse mais de <span className="font-bold text-yellow-300">200.000 conteúdos</span> dos principais streamings, 
-            canais abertos e fechados em uma única plataforma
+            {settings.home_descricao || 'Acesse mais de 200.000 conteúdos dos principais streamings, canais abertos e fechados em uma única plataforma'}
           </p>
           
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
@@ -64,7 +157,7 @@ const Home = () => {
               onClick={() => window.open(whatsappTestUrl, '_blank')}
               className="text-lg"
             >
-              🎉 Teste Grátis 6 Horas
+              🎉 Teste Grátis {getTestPeriod()}
             </Button>
             <Button 
               size="xl" 
@@ -89,6 +182,120 @@ const Home = () => {
           </div>
         </div>
       </section>
+
+      {/* Featured Content Section */}
+      {featuredContent.length > 0 && (
+        <section className="py-20 bg-telebox-gray-light">
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="text-center mb-12">
+              <h2 className="text-3xl md:text-4xl font-bold mb-4">Conteúdos em Destaque</h2>
+              <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+                Descubra os principais filmes e séries disponíveis na plataforma
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 max-w-6xl mx-auto">
+              {featuredContent.map((content, index) => (
+                <Dialog key={content.id}>
+                  <DialogTrigger asChild>
+                    <Card className="cursor-pointer hover:shadow-telebox-hero transition-shadow group">
+                      <div className="relative overflow-hidden rounded-t-lg">
+                        <img
+                          src={content.poster_url || "/placeholder.svg"}
+                          alt={content.nome}
+                          className="w-full h-64 object-cover group-hover:scale-105 transition-transform"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.src = '/placeholder.svg';
+                          }}
+                        />
+                        <div className="absolute top-2 left-2">
+                          <Badge variant="secondary" className="bg-black/70 text-white">
+                            {content.tipo}
+                          </Badge>
+                        </div>
+                        {content.classificacao > 0 && (
+                          <div className="absolute top-2 right-2">
+                            <Badge variant="secondary" className="bg-yellow-500 text-black">
+                              ⭐ {content.classificacao.toFixed(1)}
+                            </Badge>
+                          </div>
+                        )}
+                      </div>
+                      <CardHeader className="p-3">
+                        <CardTitle className="text-sm font-semibold line-clamp-2">
+                          {content.nome}
+                        </CardTitle>
+                        {content.ano && (
+                          <CardDescription className="text-xs">
+                            {content.ano}
+                          </CardDescription>
+                        )}
+                      </CardHeader>
+                    </Card>
+                  </DialogTrigger>
+
+                  <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                      <DialogTitle className="text-2xl">{content.nome}</DialogTitle>
+                    </DialogHeader>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <img
+                          src={content.poster_url || "/placeholder.svg"}
+                          alt={content.nome}
+                          className="w-full h-auto rounded-lg shadow-lg"
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement;
+                            target.src = '/placeholder.svg';
+                          }}
+                        />
+                      </div>
+                      
+                      <div className="space-y-4">
+                        {content.descricao && (
+                          <div>
+                            <h3 className="font-semibold mb-2">Sinopse</h3>
+                            <p className="text-muted-foreground">{content.descricao}</p>
+                          </div>
+                        )}
+                        
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="outline">{content.tipo}</Badge>
+                          {content.ano && <Badge variant="outline">{content.ano}</Badge>}
+                          {content.classificacao > 0 && (
+                            <Badge variant="outline">⭐ {content.classificacao.toFixed(1)}</Badge>
+                          )}
+                        </div>
+                        
+                        {content.generos && content.generos.length > 0 && (
+                          <div>
+                            <h3 className="font-semibold mb-2">Gêneros</h3>
+                            <div className="flex flex-wrap gap-2">
+                              {content.generos.map((genero: string, index: number) => (
+                                <Badge key={index} variant="secondary">{genero}</Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        <Button
+                          variant="hero"
+                          onClick={() => redirectToWatch(content)}
+                          className="w-full"
+                        >
+                          Assistir Agora
+                        </Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Planos Section */}
       <section className="py-20 bg-telebox-gray-light">
@@ -178,7 +385,7 @@ const Home = () => {
                 <p className="mb-4">Acesse direto do navegador, sem downloads</p>
                 <Button 
                   variant="telebox"
-                  onClick={() => window.open("https://web.telebox.com.br", '_blank')}
+                  onClick={() => window.open(settings.site_url || "https://web.telebox.com.br", '_blank')}
                 >
                   Acessar Plataforma Web
                 </Button>
@@ -240,7 +447,7 @@ const Home = () => {
             Pronto para começar?
           </h2>
           <p className="text-xl mb-8 text-white/90">
-            Teste grátis por 6 horas ou contrate seu plano agora mesmo!
+            Teste grátis por {getTestPeriod()} ou contrate seu plano agora mesmo!
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Button 
