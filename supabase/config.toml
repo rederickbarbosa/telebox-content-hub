@@ -69,3 +69,12 @@ verify_jwt = false
 
 [functions.enrich-tmdb]
 verify_jwt = true
+
+[functions.debug-test]
+verify_jwt = false
+
+[functions.process-m3u-simple]
+verify_jwt = true
+
+[functions.fetch-epg-simple]
+verify_jwt = false
