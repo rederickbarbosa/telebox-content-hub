@@ -7,8 +7,8 @@ const Home = () => {
   const whatsappContractUrl = "https://wa.me/5511911837288?text=Olá%2C%20quero%20assinar%20a%20TELEBOX%20e%20contratar%20um%20plano";
 
   const planos = [
-    { duracao: "1 Mês", preco: "R$ 30,00", popular: false },
-    { duracao: "2 Meses", preco: "R$ 55,00", popular: true },
+    { duracao: "1 Mês", preco: "R$ 30,00", popular: true },
+    { duracao: "2 Meses", preco: "R$ 55,00", popular: false },
     { duracao: "3 Meses", preco: "R$ 80,00", popular: false },
   ];
 
@@ -45,9 +45,9 @@ const Home = () => {
         <div className="absolute inset-0 bg-black/20"></div>
         <div className="container relative mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <img 
-            src="https://i.ibb.co/FxVWqFP/Logo-TBX-Home.png" 
+            src="/lovable-uploads/f8c39ee0-2f4f-48db-8eec-77de87d513ee.png" 
             alt="TELEBOX" 
-            className="h-20 w-auto mx-auto mb-8 filter brightness-0 invert"
+            className="h-20 w-auto mx-auto mb-8"
           />
           <h1 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">
             Melhor IPTV do Brasil
@@ -171,7 +171,7 @@ const Home = () => {
               </CardHeader>
               <CardContent className="text-center">
                 <img 
-                  src="https://i.ibb.co/FxVWqFP/Logo-TBX-Home.png" 
+                  src="/lovable-uploads/52a92ba9-cb00-476e-86a7-8019ac8c0c91.png" 
                   alt="TELEBOX Web" 
                   className="h-16 w-auto mx-auto mb-4"
                 />

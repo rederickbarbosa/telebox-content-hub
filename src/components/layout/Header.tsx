@@ -38,7 +38,7 @@ const Header = ({ user }: HeaderProps) => {
           {/* Logo */}
           <Link to="/" className="flex items-center space-x-2">
             <img 
-              src="https://i.ibb.co/FxVWqFP/Logo-TBX-Home.png" 
+              src="/lovable-uploads/52a92ba9-cb00-476e-86a7-8019ac8c0c91.png" 
               alt="TELEBOX" 
               className="h-8 w-auto"
             />

@@ -10,19 +10,18 @@ const Footer = () => {
           {/* Logo e Descrição */}
           <div className="col-span-1 md:col-span-2">
             <img 
-              src="https://i.ibb.co/FxVWqFP/Logo-TBX-Home.png" 
+              src="/lovable-uploads/f8c39ee0-2f4f-48db-8eec-77de87d513ee.png" 
               alt="TELEBOX" 
-              className="h-12 w-auto mb-4 filter brightness-0 invert"
+              className="h-12 w-auto mb-4"
             />
             <p className="text-gray-300 mb-4 max-w-md">
               Acesse mais de 200.000 conteúdos dos principais streamings, canais abertos e fechados em uma única plataforma.
             </p>
             <div className="flex space-x-4">
               <Button 
-                variant="outline" 
+                variant="whatsapp" 
                 size="sm"
                 onClick={() => window.open("https://wa.me/5511911837288", '_blank')}
-                className="border-white text-white hover:bg-white hover:text-black"
               >
                 WhatsApp
               </Button>
@@ -71,7 +70,7 @@ const Footer = () => {
         <div className="border-t border-gray-700 mt-8 pt-8">
           <div className="flex flex-col md:flex-row justify-between items-center">
             <p className="text-gray-400 text-sm">
-              © 2024 TELEBOX. Todos os direitos reservados.
+              © {new Date().getFullYear()} TELEBOX. Todos os direitos reservados.
             </p>
             <div className="flex space-x-4 mt-4 md:mt-0">
               <DMCADialog />
