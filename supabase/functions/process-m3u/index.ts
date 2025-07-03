@@ -14,12 +14,45 @@ serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    // Verificar variáveis de ambiente
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('Variáveis de ambiente não configuradas:', { supabaseUrl: !!supabaseUrl, supabaseServiceKey: !!supabaseServiceKey });
+      return new Response(JSON.stringify({ 
+        error: 'Configuração do servidor incorreta. Variáveis de ambiente não encontradas.' 
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    const { m3uContent, userId } = await req.json();
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    let requestBody;
+    try {
+      requestBody = await req.json();
+    } catch (e) {
+      console.error('Erro ao fazer parse do JSON:', e);
+      return new Response(JSON.stringify({ 
+        error: 'Formato de dados inválido. JSON malformado.' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const { m3uContent, userId } = requestBody;
+
+    if (!m3uContent || !userId) {
+      return new Response(JSON.stringify({ 
+        error: 'Dados obrigatórios não fornecidos (m3uContent, userId).' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     console.log('Processing M3U content for user:', userId);
 

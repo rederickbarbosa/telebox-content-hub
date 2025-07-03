@@ -14,10 +14,21 @@ serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    // Verificar variáveis de ambiente
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('Variáveis de ambiente não configuradas:', { supabaseUrl: !!supabaseUrl, supabaseServiceKey: !!supabaseServiceKey });
+      return new Response(JSON.stringify({ 
+        error: 'Configuração do servidor incorreta. Variáveis de ambiente não encontradas.' 
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     console.log('Iniciando busca do EPG...');
 
