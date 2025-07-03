@@ -371,6 +371,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      create_admin_user: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       upsert_admin_setting: {
         Args: { key: string; value: string; description_text?: string }
         Returns: undefined

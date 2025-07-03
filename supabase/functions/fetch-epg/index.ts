@@ -30,10 +30,20 @@ serve(async (req) => {
 
     console.log('Buscando EPG de:', epgUrl);
 
-    // Fazer fetch do XML
-    const response = await fetch(epgUrl);
+    // Fazer fetch do XML com timeout e error handling
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 segundos timeout
+
+    const response = await fetch(epgUrl, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; TELEBOX/1.0)'
+      }
+    });
+    clearTimeout(timeoutId);
+    
     if (!response.ok) {
-      throw new Error(`Erro ao buscar EPG: ${response.status}`);
+      throw new Error(`Erro ao buscar EPG: ${response.status} - ${response.statusText}`);
     }
 
     const xmlText = await response.text();
