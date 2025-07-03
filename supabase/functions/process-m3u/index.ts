@@ -24,14 +24,19 @@ serve(async (req) => {
     console.log('Processing M3U content for user:', userId);
 
     // Verificar se o usuário é admin
-    const { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('role')
       .eq('user_id', userId)
       .single();
 
-    if (profile?.role !== 'admin') {
-      throw new Error('Acesso negado. Apenas administradores podem processar M3U.');
+    if (profileError || profile?.role !== 'admin') {
+      return new Response(JSON.stringify({ 
+        error: 'Acesso negado. Apenas administradores podem processar M3U.' 
+      }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Parse M3U content

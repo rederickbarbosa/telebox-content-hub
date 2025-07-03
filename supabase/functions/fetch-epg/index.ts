@@ -42,6 +42,12 @@ serve(async (req) => {
     // Parse XML usando DOMParser
     const parser = new DOMParser();
     const xmlDoc = parser.parseFromString(xmlText, 'text/xml');
+    
+    // Verificar se houve erro no parsing
+    const parserError = xmlDoc.querySelector('parsererror');
+    if (parserError) {
+      throw new Error('Erro ao fazer parse do XML EPG: ' + parserError.textContent);
+    }
 
     // Extrair canais
     const channels = Array.from(xmlDoc.querySelectorAll('channel')).map(channel => ({

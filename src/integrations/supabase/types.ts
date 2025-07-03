@@ -307,6 +307,30 @@ export type Database = {
           },
         ]
       }
+      system_logs: {
+        Row: {
+          context: Json | null
+          created_at: string | null
+          id: string
+          level: string
+          message: string
+        }
+        Insert: {
+          context?: Json | null
+          created_at?: string | null
+          id?: string
+          level?: string
+          message: string
+        }
+        Update: {
+          context?: Json | null
+          created_at?: string | null
+          id?: string
+          level?: string
+          message?: string
+        }
+        Relationships: []
+      }
       user_content_status: {
         Row: {
           conteudo_id: string
@@ -347,7 +371,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      upsert_admin_setting: {
+        Args: { key: string; value: string; description_text?: string }
+        Returns: undefined
+      }
     }
     Enums: {
       user_role: "user" | "admin"

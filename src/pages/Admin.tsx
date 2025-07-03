@@ -13,6 +13,7 @@ import { Settings, Upload, Database, Users, Bell } from "lucide-react";
 import M3UUploader from "@/components/admin/M3UUploader";
 import AppManager from "@/components/admin/AppManager";
 import NotificationManager from "@/components/admin/NotificationManager";
+import UserManager from "@/components/admin/UserManager";
 
 const Admin = () => {
   const [user, setUser] = useState<any>(null);
@@ -99,22 +100,27 @@ const Admin = () => {
   };
 
   const updateSetting = async (key: string, value: string) => {
-    const { error } = await supabase
-      .from('admin_settings')
-      .upsert({ setting_key: key, setting_value: value });
-
-    if (error) {
-      toast({
-        title: "Erro ao salvar",
-        description: error.message,
-        variant: "destructive",
+    try {
+      // Usar a função upsert criada na migração para evitar erros de constraint
+      const { error } = await supabase.rpc('upsert_admin_setting', {
+        key: key,
+        value: value,
+        description_text: null
       });
-    } else {
+
+      if (error) throw error;
+
       toast({
         title: "Configuração salva",
         description: "As alterações foram salvas com sucesso.",
       });
       setSettings({ ...settings, [key]: value });
+    } catch (error: any) {
+      toast({
+        title: "Erro ao salvar",
+        description: error.message,
+        variant: "destructive",
+      });
     }
   };
 
@@ -366,16 +372,7 @@ const Admin = () => {
           </TabsContent>
 
           <TabsContent value="usuarios" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Gerenciar Usuários</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-muted-foreground">
-                  Funcionalidade de gerenciamento de usuários será implementada em breve.
-                </p>
-              </CardContent>
-            </Card>
+            <UserManager />
           </TabsContent>
         </Tabs>
       </div>
