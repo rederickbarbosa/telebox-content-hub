@@ -195,11 +195,33 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('Erro no processamento M3U:', error);
+    console.error('Erro detalhado no processamento M3U:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      timestamp: new Date().toISOString()
+    });
+    
+    let errorMessage = 'Erro interno do servidor';
+    let statusCode = 500;
+    
+    if (error.message?.includes('fetch')) {
+      errorMessage = 'Erro de conexão ao processar dados';
+      statusCode = 502;
+    } else if (error.message?.includes('JSON')) {
+      errorMessage = 'Erro no formato dos dados';
+      statusCode = 400;
+    } else if (error.message?.includes('permission') || error.message?.includes('auth')) {
+      errorMessage = 'Erro de permissões no banco de dados';
+      statusCode = 403;
+    }
+    
     return new Response(JSON.stringify({ 
-      error: error.message || 'Erro interno do servidor' 
+      error: errorMessage,
+      details: error.message,
+      timestamp: new Date().toISOString()
     }), {
-      status: 500,
+      status: statusCode,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }

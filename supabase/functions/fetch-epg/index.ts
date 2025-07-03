@@ -167,12 +167,33 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('Erro no processamento EPG:', error);
+    console.error('Erro detalhado no processamento EPG:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+      timestamp: new Date().toISOString()
+    });
+    
+    let errorMessage = 'Erro interno do servidor';
+    let statusCode = 500;
+    
+    if (error.message?.includes('fetch') || error.message?.includes('timeout')) {
+      errorMessage = 'Erro ao buscar dados do EPG (timeout ou conexão)';
+      statusCode = 502;
+    } else if (error.message?.includes('XML') || error.message?.includes('parse')) {
+      errorMessage = 'Erro no formato XML do EPG';
+      statusCode = 400;
+    } else if (error.message?.includes('permission') || error.message?.includes('auth')) {
+      errorMessage = 'Erro de permissões no banco de dados';
+      statusCode = 403;
+    }
+    
     return new Response(JSON.stringify({ 
-      error: error.message || 'Erro interno do servidor',
-      details: error.toString()
+      error: errorMessage,
+      details: error.message,
+      timestamp: new Date().toISOString()
     }), {
-      status: 500,
+      status: statusCode,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }

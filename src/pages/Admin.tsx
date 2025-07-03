@@ -14,6 +14,7 @@ import M3UUploader from "@/components/admin/M3UUploader";
 import AppManager from "@/components/admin/AppManager";
 import NotificationManager from "@/components/admin/NotificationManager";
 import UserManager from "@/components/admin/UserManager";
+import EdgeFunctionTester from "@/components/admin/EdgeFunctionTester";
 
 const Admin = () => {
   const [user, setUser] = useState<any>(null);
@@ -319,6 +320,8 @@ const Admin = () => {
           </TabsContent>
 
           <TabsContent value="catalogo" className="space-y-6">
+            <EdgeFunctionTester userId={user.id} />
+            
             <M3UUploader userId={user.id} onUploadComplete={loadStats} />
             
             <Card>

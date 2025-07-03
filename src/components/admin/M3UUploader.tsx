@@ -44,6 +44,11 @@ const M3UUploader = ({ userId, onUploadComplete }: M3UUploaderProps) => {
       setProgress(40);
       
       // Processar via Edge Function
+      console.log('Enviando M3U para processamento...', { 
+        contentLength: fileContent.length, 
+        userId 
+      });
+      
       const response = await supabase.functions.invoke('process-m3u', {
         body: {
           m3uContent: fileContent,
@@ -51,10 +56,16 @@ const M3UUploader = ({ userId, onUploadComplete }: M3UUploaderProps) => {
         }
       });
 
+      console.log('Resposta da Edge Function:', response);
       setProgress(80);
 
       if (response.error) {
-        throw new Error(response.error.message);
+        console.error('Erro da Edge Function:', response.error);
+        throw new Error(response.error.message || 'Erro na Edge Function');
+      }
+
+      if (!response.data) {
+        throw new Error('Nenhum dado retornado da Edge Function');
       }
 
       const result = response.data;
