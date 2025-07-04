@@ -1,12 +1,13 @@
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Upload, FileVideo, CheckCircle, AlertCircle, Database, Download, Eye } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Upload, FileVideo, CheckCircle, AlertCircle, Database, Download, Eye, Settings, Copy } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -41,23 +42,50 @@ interface ConvertedData {
   channels: ParsedChannel[];
 }
 
-interface BatchProgress {
-  current: number;
-  total: number;
-  processed: number;
+interface UploadLog {
+  timestamp: string;
+  level: 'info' | 'success' | 'warning' | 'error';
+  message: string;
 }
 
 const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
   const [uploading, setUploading] = useState(false);
   const [converting, setConverting] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
+  const [currentChunk, setCurrentChunk] = useState(0);
+  const [totalChunks, setTotalChunks] = useState(0);
+  const [chunkSize, setChunkSize] = useState(100);
   const [stats, setStats] = useState<UploadStats | null>(null);
   const [preview, setPreview] = useState<ParsedChannel[]>([]);
   const [convertedData, setConvertedData] = useState<ConvertedData | null>(null);
-  const [uploadLogs, setUploadLogs] = useState<string[]>([]);
+  const [uploadLogs, setUploadLogs] = useState<UploadLog[]>([]);
   const [uploadComplete, setUploadComplete] = useState(false);
+  const [eta, setEta] = useState<string>('');
+  const [startTime, setStartTime] = useState<number>(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+
+  const addLog = (level: 'info' | 'success' | 'warning' | 'error', message: string) => {
+    const log: UploadLog = {
+      timestamp: new Date().toISOString(),
+      level,
+      message
+    };
+    setUploadLogs(prev => [...prev, log]);
+  };
+
+  const calculateETA = (processed: number, total: number, startTime: number) => {
+    if (processed === 0) return '';
+    const elapsed = Date.now() - startTime;
+    const rate = processed / elapsed;
+    const remaining = total - processed;
+    const etaMs = remaining / rate;
+    const etaSeconds = Math.round(etaMs / 1000);
+    
+    if (etaSeconds < 60) return `${etaSeconds}s restantes`;
+    const etaMinutes = Math.round(etaSeconds / 60);
+    return `${etaMinutes}min restantes`;
+  };
 
   const parseEXTINF = (line: string): Partial<ParsedChannel> => {
     const channel: Partial<ParsedChannel> = {};
@@ -169,65 +197,85 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     URL.revokeObjectURL(url);
   };
 
-  const addLog = (message: string) => {
-    setUploadLogs(prev => [...prev, `${new Date().toISOString()}: ${message}`]);
+  const copyLogsToClipboard = () => {
+    const logsText = uploadLogs.map(log => 
+      `[${log.timestamp}] ${log.level.toUpperCase()}: ${log.message}`
+    ).join('\n');
+    
+    navigator.clipboard.writeText(logsText).then(() => {
+      toast({
+        title: "Log copiado!",
+        description: "Log completo copiado para a área de transferência",
+      });
+    });
   };
 
-  const uploadInBatches = async (data: ConvertedData) => {
-    const BATCH_SIZE = 500;
-    const totalBatches = Math.ceil(data.channels.length / BATCH_SIZE);
-    let processedChannels = 0;
+  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-    addLog(`Iniciando upload em ${totalBatches} lotes de ${BATCH_SIZE} itens cada`);
+  const uploadInChunks = async (data: ConvertedData) => {
+    const chunks: ParsedChannel[][] = [];
     
-    setBatchProgress({
-      current: 0,
-      total: totalBatches,
-      processed: 0
-    });
+    // Divide channels into chunks
+    for (let i = 0; i < data.channels.length; i += chunkSize) {
+      chunks.push(data.channels.slice(i, i + chunkSize));
+    }
 
-    for (let i = 0; i < totalBatches; i++) {
-      const start = i * BATCH_SIZE;
-      const end = Math.min(start + BATCH_SIZE, data.channels.length);
-      const batch = data.channels.slice(start, end);
-      
-      const batchData = {
+    setTotalChunks(chunks.length);
+    addLog('info', `Iniciando upload sequencial em ${chunks.length} blocos de ${chunkSize} itens cada`);
+
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      let retries = 0;
+      let success = false;
+
+      const chunkData = {
         metadata: data.metadata,
-        channels: batch
+        channels: chunk
       };
 
-      addLog(`Enviando lote ${i + 1}/${totalBatches} (${batch.length} itens)`);
+      while (!success && retries < 3) {
+        try {
+          addLog('info', `Enviando bloco ${i + 1}/${chunks.length} (${chunk.length} itens) - Tentativa ${retries + 1}`);
 
-      try {
-        const { data: result, error } = await supabase.functions.invoke('ingest-catalogo', {
-          body: batchData
-        });
+          const { data: result, error } = await supabase.functions.invoke('ingest-catalogo', {
+            body: chunkData
+          });
 
-        if (error) {
-          addLog(`Erro no lote ${i + 1}: ${error.message}`);
-          throw error;
+          if (error) {
+            throw error;
+          }
+
+          success = true;
+          setCurrentChunk(i + 1);
+          const progressPercent = Math.round(((i + 1) / chunks.length) * 100);
+          setProgress(progressPercent);
+
+          // Calculate ETA
+          const newEta = calculateETA(i + 1, chunks.length, startTime);
+          setEta(newEta);
+
+          addLog('success', `Bloco ${i + 1} processado com sucesso (${result.processed || chunk.length} itens)`);
+
+        } catch (error: any) {
+          retries++;
+          const delay = Math.pow(2, retries - 1) * 2000; // 2s, 4s, 8s
+          
+          addLog('warning', `Erro no bloco ${i + 1}, tentativa ${retries}: ${error.message}`);
+          
+          if (retries < 3) {
+            addLog('info', `Aguardando ${delay/1000}s antes da próxima tentativa...`);
+            await sleep(delay);
+          }
         }
+      }
 
-        processedChannels += batch.length;
-        addLog(`Lote ${i + 1} processado com sucesso (${result.processed || batch.length} itens)`);
-
-        setBatchProgress({
-          current: i + 1,
-          total: totalBatches,
-          processed: processedChannels
-        });
-
-        // Update progress bar
-        const progressPercent = Math.round(((i + 1) / totalBatches) * 100);
-        setProgress(progressPercent);
-
-      } catch (error: any) {
-        addLog(`Falha crítica no lote ${i + 1}: ${error.message}`);
-        throw error;
+      if (!success) {
+        addLog('error', `Falha crítica no bloco ${i + 1} após 3 tentativas`);
+        throw new Error(`Falha ao processar bloco ${i + 1} após 3 tentativas`);
       }
     }
 
-    addLog(`✅ Upload concluído: ${processedChannels} itens processados em ${totalBatches} lotes`);
+    addLog('success', `✅ Upload concluído: ${data.channels.length} itens processados em ${chunks.length} blocos`);
     setUploadComplete(true);
   };
 
@@ -238,7 +286,9 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     // Reset states
     setUploadLogs([]);
     setUploadComplete(false);
-    setBatchProgress(null);
+    setCurrentChunk(0);
+    setTotalChunks(0);
+    setEta('');
 
     // Validate file type
     const fileName = file.name.toLowerCase();
@@ -257,9 +307,10 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     setUploading(true);
     setConverting(fileName.endsWith('.m3u') || fileName.endsWith('.m3u8'));
     setProgress(0);
+    setStartTime(Date.now());
 
     try {
-      addLog(`Iniciando processamento do arquivo: ${file.name} (${Math.round(file.size / 1024)} KB)`);
+      addLog('info', `Iniciando processamento do arquivo: ${file.name} (${Math.round(file.size / 1024)} KB)`);
 
       // Read file content
       const fileContent = await file.text();
@@ -268,13 +319,13 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       let processedData: ConvertedData;
 
       if (fileName.endsWith('.m3u') || fileName.endsWith('.m3u8')) {
-        addLog('Convertendo arquivo M3U para JSON...');
+        addLog('info', 'Convertendo arquivo M3U para JSON...');
         setProgress(40);
         processedData = convertM3UToJSON(fileContent);
-        addLog(`Conversão concluída: ${processedData.channels.length} canais encontrados`);
+        addLog('success', `Conversão concluída: ${processedData.channels.length} canais encontrados`);
         setProgress(60);
       } else {
-        addLog('Validando arquivo JSON...');
+        addLog('info', 'Validando arquivo JSON...');
         setProgress(40);
         processedData = JSON.parse(fileContent);
         
@@ -282,7 +333,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         if (!processedData.metadata || !processedData.channels) {
           throw new Error('JSON deve conter "metadata" e "channels"');
         }
-        addLog(`JSON válido: ${processedData.channels.length} canais`);
+        addLog('success', `JSON válido: ${processedData.channels.length} canais`);
         setProgress(60);
       }
 
@@ -293,12 +344,13 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       setConvertedData(processedData);
       setProgress(70);
 
-      // Upload in batches
-      addLog('Iniciando upload para o Supabase...');
-      await uploadInBatches(processedData);
+      // Upload in chunks with back-pressure
+      addLog('info', `Iniciando upload sequencial com blocos de ${chunkSize} itens...`);
+      await uploadInChunks(processedData);
 
       setProgress(100);
-      addLog('🎉 Processo concluído com sucesso!');
+      setEta('Concluído!');
+      addLog('success', '🎉 Processo concluído com sucesso!');
 
       toast({
         title: "✅ Importação concluída!",
@@ -308,7 +360,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       onUploadComplete();
 
     } catch (error: any) {
-      addLog(`❌ Erro: ${error.message}`);
+      addLog('error', `❌ Erro: ${error.message}`);
       console.error('Erro na importação:', error);
       toast({
         title: "Erro na importação",
@@ -318,7 +370,9 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     } finally {
       setUploading(false);
       setConverting(false);
-      event.target.value = '';
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
@@ -328,6 +382,43 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         <CardTitle className="flex items-center gap-2">
           <Database className="h-5 w-5" />
           Upload de Catálogo M3U/JSON
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button variant="ghost" size="sm" className="ml-auto">
+                <Settings className="h-4 w-4" />
+                Configurar
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Configurações de Upload</DialogTitle>
+                <DialogDescription>
+                  Ajuste o tamanho dos blocos para otimizar o upload
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="chunk-size">Tamanho do Bloco</Label>
+                  <Select value={chunkSize.toString()} onValueChange={(value) => setChunkSize(parseInt(value))}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="100">100 itens (~50KB)</SelectItem>
+                      <SelectItem value="300">300 itens (~150KB)</SelectItem>
+                      <SelectItem value="500">500 itens (~250KB)</SelectItem>
+                      <SelectItem value="1000">1000 itens (~500KB)</SelectItem>
+                      <SelectItem value="2000">2000 itens (~1MB)</SelectItem>
+                      <SelectItem value="5000">5000 itens (~2.5MB)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Arquivos grandes: use blocos menores para maior estabilidade
+                  </p>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
         </CardTitle>
         <CardDescription>
           Faça upload de arquivos .m3u, .m3u8 ou .json para atualizar o catálogo
@@ -347,6 +438,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
             </div>
           </Label>
           <Input
+            ref={fileInputRef}
             id="catalog-file"
             type="file"
             accept=".m3u,.m3u8,.json"
@@ -366,10 +458,11 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
             </div>
             <Progress value={progress} className="w-full" />
             
-            {batchProgress && (
+            {totalChunks > 0 && (
               <div className="text-xs text-muted-foreground space-y-1">
-                <div>Lote {batchProgress.current}/{batchProgress.total}</div>
-                <div>Processados: {batchProgress.processed.toLocaleString()} itens</div>
+                <div>Bloco {currentChunk}/{totalChunks}</div>
+                <div>Tamanho do bloco: {chunkSize} itens</div>
+                {eta && <div>{eta}</div>}
               </div>
             )}
           </div>
@@ -377,7 +470,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
 
         {uploadComplete && (
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <div className="flex items-center gap-2 text-green-700">
+            <div className="flex items-center gap-2 text-green-700 mb-2">
               <CheckCircle className="h-5 w-5" />
               <span className="font-medium">✅ Catálogo atualizado com sucesso</span>
             </div>
@@ -388,30 +481,39 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
                   Ver detalhes técnicos
                 </Button>
               </DialogTrigger>
-              <DialogContent className="max-w-2xl max-h-[80vh]">
+              <DialogContent className="max-w-4xl max-h-[80vh]">
                 <DialogHeader>
                   <DialogTitle>Log de Upload</DialogTitle>
                   <DialogDescription>
                     Detalhes técnicos do processo de importação
                   </DialogDescription>
                 </DialogHeader>
-                <div className="space-y-2">
+                <div className="space-y-4">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium">Log completo:</span>
+                    <span className="text-sm font-medium">Log completo ({uploadLogs.length} entradas):</span>
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => {
-                        navigator.clipboard.writeText(uploadLogs.join('\n'));
-                        toast({ title: "Log copiado!", description: "Log copiado para a área de transferência" });
-                      }}
+                      onClick={copyLogsToClipboard}
+                      className="flex items-center gap-2"
                     >
+                      <Copy className="h-4 w-4" />
                       Copiar Log
                     </Button>
                   </div>
                   <div className="max-h-[400px] overflow-y-auto bg-slate-900 text-slate-100 p-4 rounded-lg text-xs font-mono">
                     {uploadLogs.map((log, index) => (
-                      <div key={index} className="mb-1">{log}</div>
+                      <div 
+                        key={index} 
+                        className={`mb-1 ${
+                          log.level === 'error' ? 'text-red-400' :
+                          log.level === 'warning' ? 'text-yellow-400' :
+                          log.level === 'success' ? 'text-green-400' :
+                          'text-slate-300'
+                        }`}
+                      >
+                        [{log.timestamp.split('T')[1].split('.')[0]}] {log.level.toUpperCase()}: {log.message}
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -468,8 +570,8 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
 
         <div className="text-xs text-muted-foreground space-y-1">
           <p>• Arquivos M3U serão convertidos automaticamente para JSON</p>
-          <p>• Arquivos grandes são enviados em lotes de 500 itens para melhor performance</p>
-          <p>• O processamento ocorre automaticamente após o upload</p>
+          <p>• Upload sequencial com retry automático até 3x por bloco</p>
+          <p>• Configure o tamanho dos blocos para otimizar a performance</p>
           <p>• Dados antigos serão desativados automaticamente</p>
         </div>
       </CardContent>
