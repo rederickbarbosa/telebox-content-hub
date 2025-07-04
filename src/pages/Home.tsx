@@ -5,36 +5,18 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useSettings } from "@/hooks/useSettings";
 
 const Home = () => {
-  const [settings, setSettings] = useState<any>({});
   const [featuredContent, setFeaturedContent] = useState<any[]>([]);
   const [backgroundImage, setBackgroundImage] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { settings, getTestPeriod, buildWhatsAppUrl, getPlans, getSetting } = useSettings();
 
   useEffect(() => {
-    loadSettings();
     loadFeaturedContent();
   }, []);
-
-  const loadSettings = async () => {
-    try {
-      const { data } = await supabase
-        .from('admin_settings')
-        .select('*');
-      
-      if (data) {
-        const settingsObj = data.reduce((acc: any, setting: any) => {
-          acc[setting.setting_key] = setting.setting_value;
-          return acc;
-        }, {});
-        setSettings(settingsObj);
-      }
-    } catch (error) {
-      console.error('Erro ao carregar configurações:', error);
-    }
-  };
 
   const loadFeaturedContent = async () => {
     try {
@@ -78,18 +60,10 @@ const Home = () => {
     }
   };
 
-  const getTestPeriod = () => {
-    return settings.teste_horas ? `${settings.teste_horas} horas` : "6 horas";
-  };
-
-  const whatsappTestUrl = `https://wa.me/${settings.whatsapp_numero || '5511911837288'}?text=Olá%2C%20gostaria%20de%20fazer%20o%20teste%20grátis%20de%20${getTestPeriod()}%20da%20TELEBOX`;
-  const whatsappContractUrl = `https://wa.me/${settings.whatsapp_numero || '5511911837288'}?text=Olá%2C%20quero%20assinar%20a%20TELEBOX%20e%20contratar%20um%20plano`;
-
-  const planos = [
-    { duracao: "1 Mês", preco: "R$ 30,00", popular: true },
-    { duracao: "2 Meses", preco: "R$ 55,00", popular: false },
-    { duracao: "3 Meses", preco: "R$ 80,00", popular: false },
-  ];
+  // Usar configurações do hook
+  const planos = getPlans();
+  const whatsappTestUrl = buildWhatsAppUrl('test');
+  const whatsappContractUrl = buildWhatsAppUrl('contract');
 
   const streamings = [
     "Globoplay", "Netflix", "Disney+", "Prime Video", "Paramount+", 

@@ -1,8 +1,15 @@
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { useSettings } from "@/hooks/useSettings";
+import { Instagram, MessageCircle } from "lucide-react";
 
 const Footer = () => {
+  const { getSetting, buildWhatsAppUrl, getPlans } = useSettings();
+  const plans = getPlans();
+  const instagramUrl = getSetting('instagram_url');
+  const facebookUrl = getSetting('facebook_url');
+  const telegramUrl = getSetting('telegram_url');
   return (
     <footer className="bg-gradient-dark text-white py-12 mt-20">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -21,10 +28,22 @@ const Footer = () => {
               <Button 
                 variant="whatsapp" 
                 size="sm"
-                onClick={() => window.open("https://wa.me/5511911837288", '_blank')}
+                onClick={() => window.open(buildWhatsAppUrl('contract'), '_blank')}
               >
+                <MessageCircle className="h-4 w-4 mr-2" />
                 WhatsApp
               </Button>
+              {instagramUrl && (
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => window.open(instagramUrl, '_blank')}
+                  className="border-gray-600 text-gray-300 hover:text-white hover:border-white"
+                >
+                  <Instagram className="h-4 w-4 mr-2" />
+                  Instagram
+                </Button>
+              )}
             </div>
           </div>
 
@@ -59,9 +78,12 @@ const Footer = () => {
           <div>
             <h3 className="font-semibold text-lg mb-4">Planos</h3>
             <ul className="space-y-2">
-              <li className="text-gray-300">1 Mês - R$ 30,00</li>
-              <li className="text-gray-300">2 Meses - R$ 55,00</li>
-              <li className="text-gray-300">3 Meses - R$ 80,00</li>
+              {plans.map((plano) => (
+                <li key={plano.id} className="text-gray-300 flex items-center">
+                  {plano.duracao} - {plano.preco}
+                  {plano.popular && <span className="ml-2 text-xs bg-telebox-blue px-2 py-1 rounded">Popular</span>}
+                </li>
+              ))}
             </ul>
           </div>
         </div>

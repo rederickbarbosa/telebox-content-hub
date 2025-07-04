@@ -49,7 +49,7 @@ const M3UUploader = ({ userId, onUploadComplete }: M3UUploaderProps) => {
         userId 
       });
       
-      const response = await supabase.functions.invoke('process-m3u', {
+      const response = await supabase.functions.invoke('process-m3u-simple', {
         body: {
           m3uContent: fileContent
         }
