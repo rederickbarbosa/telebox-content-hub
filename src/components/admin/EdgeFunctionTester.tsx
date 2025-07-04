@@ -115,9 +115,6 @@ const EdgeFunctionTester = ({ userId }: EdgeFunctionTesterProps) => {
     }
   };
 
-  const testM3UFunction = async () => {
-    await testM3USimpleFunction();
-  };
 
   const testFunction = async (functionName: string) => {
     setTesting(true);
@@ -172,55 +169,106 @@ const EdgeFunctionTester = ({ userId }: EdgeFunctionTesterProps) => {
     }
   };
 
-  const testM3USimpleFunction = async () => {
+  const testAllSystems = async () => {
     setTesting(true);
     setLastResult(null);
+    setDebugResult(null);
+    
+    const results: Array<{name: string, success: boolean, data?: any, error?: string}> = [];
     
     try {
-      console.log('🔧 Testando função process-m3u-simple...');
-      
-      // M3U de teste simples
-      const testM3U = `#EXTM3U
-#EXTINF:-1 tvg-id="teste" tvg-name="Teste" tvg-logo="" group-title="Teste",Canal Teste
-http://exemplo.com/teste.m3u8
-#EXTINF:-1 tvg-id="filme1" tvg-name="Filme 1" tvg-logo="" group-title="Filmes",Filme de Teste
-http://exemplo.com/filme1.m3u8`;
-      
-      const response = await supabase.functions.invoke('process-m3u-simple', {
-        body: {
-          m3uContent: testM3U
-        }
-      });
-      
-      console.log('🔧 Resposta M3U Simple:', response);
-      
-      if (response.error) {
-        throw new Error(JSON.stringify(response.error));
+      // Test 1: Debug
+      console.log('🔧 1/3 Testando Debug...');
+      try {
+        const debugResponse = await supabase.functions.invoke('debug-test', {
+          body: { test: 'system test' }
+        });
+        results.push({
+          name: 'Debug',
+          success: !debugResponse.error,
+          data: debugResponse.data,
+          error: debugResponse.error?.message
+        });
+      } catch (error: any) {
+        results.push({
+          name: 'Debug',
+          success: false,
+          error: error.message
+        });
       }
-      
+
+      // Test 2: EPG
+      console.log('🔧 2/3 Testando EPG...');
+      try {
+        const epgResponse = await supabase.functions.invoke('fetch-epg-simple', {
+          body: {}
+        });
+        results.push({
+          name: 'EPG',
+          success: !epgResponse.error,
+          data: epgResponse.data,
+          error: epgResponse.error?.message
+        });
+      } catch (error: any) {
+        results.push({
+          name: 'EPG',
+          success: false,
+          error: error.message
+        });
+      }
+
+      // Test 3: TMDB Enrich
+      console.log('🔧 3/3 Testando TMDB...');
+      try {
+        const tmdbResponse = await supabase.functions.invoke('enrich-tmdb', {
+          body: { batchSize: 3 }
+        });
+        results.push({
+          name: 'TMDB',
+          success: !tmdbResponse.error,
+          data: tmdbResponse.data,
+          error: tmdbResponse.error?.message
+        });
+      } catch (error: any) {
+        results.push({
+          name: 'TMDB',
+          success: false,
+          error: error.message
+        });
+      }
+
+      // Compile results
+      const successCount = results.filter(r => r.success).length;
+      const failCount = results.length - successCount;
+
       setLastResult({
-        type: 'M3U',
-        success: true,
-        data: response.data,
+        type: 'SISTEMA COMPLETO',
+        success: failCount === 0,
+        data: {
+          summary: `${successCount}/${results.length} testes passaram`,
+          results: results,
+          timestamp: new Date().toISOString()
+        },
         timestamp: new Date().toISOString()
       });
-      
+
       toast({
-        title: "✅ Teste M3U Simple concluído",
-        description: `M3U processado! ${response.data?.totalChannels || 0} canais`,
+        title: failCount === 0 ? "✅ Todos os testes passaram!" : `⚠️ ${failCount} teste(s) falharam`,
+        description: `${successCount}/${results.length} sistemas funcionando`,
+        variant: failCount === 0 ? "default" : "destructive"
       });
-      
+
     } catch (error: any) {
-      console.error('❌ Erro no teste M3U Simple:', error);
+      console.error('❌ Erro no teste completo:', error);
       setLastResult({
-        type: 'M3U',
+        type: 'SISTEMA COMPLETO',
         success: false,
         error: error.message,
         timestamp: new Date().toISOString()
       });
       
       toast({
-        title: "❌ Erro no teste M3U Simple",
+        title: "❌ Erro no teste completo",
         description: error.message,
         variant: "destructive",
       });
@@ -243,43 +291,13 @@ http://exemplo.com/filme1.m3u8`;
       <CardContent className="space-y-4">
         <div className="flex gap-4 flex-wrap">
           <Button 
-            onClick={testDebugFunction}
+            onClick={testAllSystems}
             disabled={testing}
             variant="default"
             className="flex items-center gap-2"
           >
             <Play className="h-4 w-4" />
-            🔧 Testar Debug
-          </Button>
-          
-          <Button 
-            onClick={testEPGFunction}
-            disabled={testing}
-            variant="outline"
-            className="flex items-center gap-2"
-          >
-            <Play className="h-4 w-4" />
-            🔧 Testar EPG Simple
-          </Button>
-          
-          <Button 
-            onClick={testM3UFunction}
-            disabled={testing}
-            variant="outline"
-            className="flex items-center gap-2"
-          >
-            <Play className="h-4 w-4" />
-            🔧 Testar M3U Simple
-          </Button>
-          
-          <Button 
-            onClick={() => testFunction('ingest-m3u-chunk')}
-            disabled={testing}
-            variant="outline"
-            className="flex items-center gap-2"
-          >
-            <Play className="h-4 w-4" />
-            🔧 Testar Chunk Ingest
+            🔧 Testar Tudo
           </Button>
           
           <Button 

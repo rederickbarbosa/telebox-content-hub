@@ -10,8 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Settings, Upload, Database, Users, Bell } from "lucide-react";
-import M3UUploader from "@/components/admin/M3UUploader";
-import ChunkUploader from "@/components/admin/ChunkUploader";
+
+import CatalogUploader from "@/components/admin/CatalogUploader";
 import AppManager from "@/components/admin/AppManager";
 import NotificationManager from "@/components/admin/NotificationManager";
 import UserManager from "@/components/admin/UserManager";
@@ -321,11 +321,9 @@ const Admin = () => {
           </TabsContent>
 
           <TabsContent value="catalogo" className="space-y-6">
+            <CatalogUploader onUploadComplete={loadStats} />
+            
             <EdgeFunctionTester userId={user.id} />
-            
-            <ChunkUploader onUploadComplete={loadStats} />
-            
-            <M3UUploader userId={user.id} onUploadComplete={loadStats} />
             
             <Card>
               <CardHeader>
@@ -343,12 +341,12 @@ const Admin = () => {
                   onClick={async () => {
                     setLoading(true);
                     try {
-                      const response = await supabase.functions.invoke('fetch-epg');
+                      const response = await supabase.functions.invoke('fetch-epg-simple');
                       if (response.error) throw new Error(response.error.message);
                       
                       toast({
                         title: "EPG atualizado!",
-                        description: `${response.data.programmes} programas de ${response.data.channels} canais atualizados.`,
+                        description: `${response.data.programmes || 0} programas de ${response.data.channels || 0} canais atualizados.`,
                       });
                     } catch (error: any) {
                       toast({
