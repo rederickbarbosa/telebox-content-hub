@@ -1,103 +1,147 @@
-import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { useSettings } from "@/hooks/useSettings";
-import { Instagram, MessageCircle } from "lucide-react";
+import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Instagram, Facebook, Send, MessageCircle, Clock } from 'lucide-react';
+import { supabase } from "@/integrations/supabase/client";
+
+interface Settings {
+  instagram_url?: string;
+  facebook_url?: string;
+  telegram_url?: string;
+  whatsapp_numero?: string;
+}
 
 const Footer = () => {
-  const { getSetting, buildWhatsAppUrl, getPlans } = useSettings();
-  const plans = getPlans();
-  const instagramUrl = getSetting('instagram_url');
-  const facebookUrl = getSetting('facebook_url');
-  const telegramUrl = getSetting('telegram_url');
+  const [settings, setSettings] = useState<Settings>({});
+
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    const { data } = await supabase
+      .from('admin_settings')
+      .select('*');
+    
+    if (data) {
+      const settingsObj = data.reduce((acc, setting) => {
+        acc[setting.setting_key] = setting.setting_value;
+        return acc;
+      }, {});
+      setSettings(settingsObj);
+    }
+  };
+
+  const socialMediaLinks = [
+    { name: 'Instagram', url: settings.instagram_url, icon: Instagram, color: 'text-pink-600 hover:text-pink-700' },
+    { name: 'Facebook', url: settings.facebook_url, icon: Facebook, color: 'text-blue-600 hover:text-blue-700' },
+    { name: 'Telegram', url: settings.telegram_url, icon: Send, color: 'text-blue-500 hover:text-blue-600' },
+  ].filter(link => link.url);
+
   return (
-    <footer className="bg-gradient-dark text-white py-12 mt-20">
+    <footer className="bg-gradient-dark text-white py-12">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-          {/* Logo e Descrição */}
-          <div className="col-span-1 md:col-span-2">
-            <img 
-              src="/lovable-uploads/f8c39ee0-2f4f-48db-8eec-77de87d513ee.png" 
-              alt="TELEBOX" 
-              className="h-12 w-auto mb-4"
-            />
-            <p className="text-gray-300 mb-4 max-w-md">
-              Acesse mais de 200.000 conteúdos dos principais streamings, canais abertos e fechados em uma única plataforma.
-            </p>
-            <div className="flex space-x-4">
-              <Button 
-                variant="whatsapp" 
-                size="sm"
-                onClick={() => window.open(buildWhatsAppUrl('contract'), '_blank')}
-              >
-                <MessageCircle className="h-4 w-4 mr-2" />
-                WhatsApp
-              </Button>
-              {instagramUrl && (
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => window.open(instagramUrl, '_blank')}
-                  className="border-gray-600 text-gray-300 hover:text-white hover:border-white"
-                >
-                  <Instagram className="h-4 w-4 mr-2" />
-                  Instagram
-                </Button>
-              )}
+          {/* Logo and Description */}
+          <div className="md:col-span-2">
+            <div className="flex items-center space-x-3 mb-4">
+              <img 
+                src="/lovable-uploads/52a92ba9-cb00-476e-86a7-8019ac8c0c91.png" 
+                alt="TELEBOX" 
+                className="h-8 w-auto"
+              />
+              <span className="text-2xl font-bold">TELEBOX</span>
             </div>
+            <p className="text-gray-300 mb-6 max-w-md">
+              A melhor plataforma de IPTV do Brasil. Assista seus conteúdos favoritos com qualidade superior e suporte 24 horas.
+            </p>
+            
+            {/* Social Media */}
+            {socialMediaLinks.length > 0 && (
+              <div className="flex space-x-4">
+                {socialMediaLinks.map((social) => (
+                  <a
+                    key={social.name}
+                    href={social.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`${social.color} transition-colors p-2 rounded-full hover:bg-white/10`}
+                    aria-label={social.name}
+                  >
+                    <social.icon className="h-5 w-5" />
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Links Rápidos */}
+          {/* Quick Links */}
           <div>
-            <h3 className="font-semibold text-lg mb-4">Links Rápidos</h3>
+            <h3 className="text-lg font-semibold mb-4">Links Rápidos</h3>
             <ul className="space-y-2">
               <li>
-                <a href="/" className="text-gray-300 hover:text-white transition-colors">
-                  Início
-                </a>
-              </li>
-              <li>
-                <a href="/catalogo" className="text-gray-300 hover:text-white transition-colors">
+                <Link to="/catalogo" className="text-gray-300 hover:text-white transition-colors">
                   Catálogo
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="/programacao" className="text-gray-300 hover:text-white transition-colors">
+                <Link to="/programacao" className="text-gray-300 hover:text-white transition-colors">
                   Programação
-                </a>
+                </Link>
               </li>
               <li>
-                <a href="/aplicativos" className="text-gray-300 hover:text-white transition-colors">
+                <Link to="/aplicativos" className="text-gray-300 hover:text-white transition-colors">
                   Aplicativos
-                </a>
+                </Link>
+              </li>
+              <li>
+                <Link to="/banco" className="text-gray-300 hover:text-white transition-colors">
+                  Banco de Séries
+                </Link>
               </li>
             </ul>
           </div>
 
-          {/* Planos */}
+          {/* Contact */}
           <div>
-            <h3 className="font-semibold text-lg mb-4">Planos</h3>
-            <ul className="space-y-2">
-              {plans.map((plano) => (
-                <li key={plano.id} className="text-gray-300 flex items-center">
-                  {plano.duracao} - {plano.preco}
-                  {plano.popular && <span className="ml-2 text-xs bg-telebox-blue px-2 py-1 rounded">Popular</span>}
-                </li>
-              ))}
-            </ul>
+            <h3 className="text-lg font-semibold mb-4">Contato</h3>
+            <div className="space-y-3">
+              <a
+                href={`https://wa.me/${settings.whatsapp_numero || '5511911837288'}?text=Olá! Preciso de ajuda com minha conta TELEBOX.`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center space-x-2 text-gray-300 hover:text-white transition-colors"
+              >
+                <MessageCircle className="h-4 w-4 text-green-500" />
+                <span>Suporte via WhatsApp</span>
+              </a>
+              
+              <div className="flex items-center space-x-2 text-gray-300">
+                <Clock className="h-4 w-4" />
+                <span>Disponível 24h</span>
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* Divider */}
+        {/* Bottom Section */}
         <div className="border-t border-gray-700 mt-8 pt-8">
-          <div className="flex flex-col md:flex-row justify-between items-center">
-            <p className="text-gray-400 text-sm">
-              © {new Date().getFullYear()} TELEBOX. Todos os direitos reservados.
-            </p>
-            <div className="flex space-x-4 mt-4 md:mt-0">
-              <DMCADialog />
-              <TermsDialog />
-              <PrivacyDialog />
+          <div className="flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
+            <div className="text-center md:text-left">
+              <p className="text-gray-400 text-sm">
+                © {new Date().getFullYear()} TELEBOX. Todos os direitos reservados.
+              </p>
+            </div>
+            
+            <div className="flex flex-wrap justify-center gap-4 text-sm">
+              <a href="#" className="text-gray-400 hover:text-white transition-colors">
+                Política DMCA
+              </a>
+              <a href="#" className="text-gray-400 hover:text-white transition-colors">
+                Termos de Uso
+              </a>
+              <a href="#" className="text-gray-400 hover:text-white transition-colors">
+                Privacidade
+              </a>
             </div>
           </div>
         </div>
@@ -105,90 +149,5 @@ const Footer = () => {
     </footer>
   );
 };
-
-const DMCADialog = () => (
-  <Dialog>
-    <DialogTrigger asChild>
-      <button className="text-gray-400 hover:text-white text-sm transition-colors">
-        DMCA
-      </button>
-    </DialogTrigger>
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>Política DMCA</DialogTitle>
-      </DialogHeader>
-      <div className="space-y-4">
-        <p>
-          A TELEBOX não armazena, hospeda ou produz qualquer conteúdo audiovisual. 
-          Nosso serviço funciona exclusivamente como um agregador de links disponíveis 
-          publicamente na internet.
-        </p>
-        <p>
-          Todos os conteúdos são fornecidos através de links externos encontrados 
-          publicamente na web. Não somos responsáveis pelo conteúdo disponibilizado 
-          através destes links.
-        </p>
-        <p>
-          Se você acredita que algum conteúdo infringe direitos autorais, entre em 
-          contato conosco através do WhatsApp para análise e possível remoção.
-        </p>
-      </div>
-    </DialogContent>
-  </Dialog>
-);
-
-const TermsDialog = () => (
-  <Dialog>
-    <DialogTrigger asChild>
-      <button className="text-gray-400 hover:text-white text-sm transition-colors">
-        Termos
-      </button>
-    </DialogTrigger>
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>Termos de Uso</DialogTitle>
-      </DialogHeader>
-      <div className="space-y-4">
-        <p>
-          Ao utilizar nossos serviços, você concorda com os seguintes termos:
-        </p>
-        <ul className="list-disc list-inside space-y-2">
-          <li>O serviço é fornecido "como está", sem garantias</li>
-          <li>É proibido o uso comercial ou redistribuição do serviço</li>
-          <li>O usuário é responsável pelo uso adequado do conteúdo</li>
-          <li>Reservamo-nos o direito de modificar ou descontinuar o serviço</li>
-          <li>Problemas técnicos podem ocorrer e serão resolvidos quando possível</li>
-        </ul>
-      </div>
-    </DialogContent>
-  </Dialog>
-);
-
-const PrivacyDialog = () => (
-  <Dialog>
-    <DialogTrigger asChild>
-      <button className="text-gray-400 hover:text-white text-sm transition-colors">
-        Privacidade
-      </button>
-    </DialogTrigger>
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>Política de Privacidade</DialogTitle>
-      </DialogHeader>
-      <div className="space-y-4">
-        <p>
-          Respeitamos sua privacidade e protegemos seus dados pessoais:
-        </p>
-        <ul className="list-disc list-inside space-y-2">
-          <li>Coletamos apenas dados necessários para o funcionamento do serviço</li>
-          <li>Não compartilhamos dados pessoais com terceiros</li>
-          <li>Dados de navegação podem ser coletados para melhorar a experiência</li>
-          <li>Você pode solicitar a exclusão de seus dados a qualquer momento</li>
-          <li>Utilizamos cookies para melhorar a funcionalidade do site</li>
-        </ul>
-      </div>
-    </DialogContent>
-  </Dialog>
-);
 
 export default Footer;

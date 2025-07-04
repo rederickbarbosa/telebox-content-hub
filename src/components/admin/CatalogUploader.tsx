@@ -5,7 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { Upload, FileVideo, CheckCircle, AlertCircle, Database, Download } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Upload, FileVideo, CheckCircle, AlertCircle, Database, Download, Eye } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -40,13 +41,22 @@ interface ConvertedData {
   channels: ParsedChannel[];
 }
 
+interface BatchProgress {
+  current: number;
+  total: number;
+  processed: number;
+}
+
 const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
   const [uploading, setUploading] = useState(false);
   const [converting, setConverting] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
   const [stats, setStats] = useState<UploadStats | null>(null);
   const [preview, setPreview] = useState<ParsedChannel[]>([]);
   const [convertedData, setConvertedData] = useState<ConvertedData | null>(null);
+  const [uploadLogs, setUploadLogs] = useState<string[]>([]);
+  const [uploadComplete, setUploadComplete] = useState(false);
   const { toast } = useToast();
 
   const parseEXTINF = (line: string): Partial<ParsedChannel> => {
@@ -102,10 +112,8 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       const line = lines[i];
       
       if (line.startsWith('#EXTINF:')) {
-        // Parse EXTINF line
         currentChannel = parseEXTINF(line);
       } else if (line.startsWith('http') || line.includes('://')) {
-        // URL line
         if (Object.keys(currentChannel).length > 0 && currentChannel.name) {
           channels.push({
             duration: currentChannel.duration || '-1',
@@ -161,9 +169,76 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     URL.revokeObjectURL(url);
   };
 
+  const addLog = (message: string) => {
+    setUploadLogs(prev => [...prev, `${new Date().toISOString()}: ${message}`]);
+  };
+
+  const uploadInBatches = async (data: ConvertedData) => {
+    const BATCH_SIZE = 500;
+    const totalBatches = Math.ceil(data.channels.length / BATCH_SIZE);
+    let processedChannels = 0;
+
+    addLog(`Iniciando upload em ${totalBatches} lotes de ${BATCH_SIZE} itens cada`);
+    
+    setBatchProgress({
+      current: 0,
+      total: totalBatches,
+      processed: 0
+    });
+
+    for (let i = 0; i < totalBatches; i++) {
+      const start = i * BATCH_SIZE;
+      const end = Math.min(start + BATCH_SIZE, data.channels.length);
+      const batch = data.channels.slice(start, end);
+      
+      const batchData = {
+        metadata: data.metadata,
+        channels: batch
+      };
+
+      addLog(`Enviando lote ${i + 1}/${totalBatches} (${batch.length} itens)`);
+
+      try {
+        const { data: result, error } = await supabase.functions.invoke('ingest-catalogo', {
+          body: batchData
+        });
+
+        if (error) {
+          addLog(`Erro no lote ${i + 1}: ${error.message}`);
+          throw error;
+        }
+
+        processedChannels += batch.length;
+        addLog(`Lote ${i + 1} processado com sucesso (${result.processed || batch.length} itens)`);
+
+        setBatchProgress({
+          current: i + 1,
+          total: totalBatches,
+          processed: processedChannels
+        });
+
+        // Update progress bar
+        const progressPercent = Math.round(((i + 1) / totalBatches) * 100);
+        setProgress(progressPercent);
+
+      } catch (error: any) {
+        addLog(`Falha crítica no lote ${i + 1}: ${error.message}`);
+        throw error;
+      }
+    }
+
+    addLog(`✅ Upload concluído: ${processedChannels} itens processados em ${totalBatches} lotes`);
+    setUploadComplete(true);
+  };
+
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    // Reset states
+    setUploadLogs([]);
+    setUploadComplete(false);
+    setBatchProgress(null);
 
     // Validate file type
     const fileName = file.name.toLowerCase();
@@ -184,6 +259,8 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     setProgress(0);
 
     try {
+      addLog(`Iniciando processamento do arquivo: ${file.name} (${Math.round(file.size / 1024)} KB)`);
+
       // Read file content
       const fileContent = await file.text();
       setProgress(20);
@@ -191,12 +268,13 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       let processedData: ConvertedData;
 
       if (fileName.endsWith('.m3u') || fileName.endsWith('.m3u8')) {
-        // Convert M3U to JSON
+        addLog('Convertendo arquivo M3U para JSON...');
         setProgress(40);
         processedData = convertM3UToJSON(fileContent);
+        addLog(`Conversão concluída: ${processedData.channels.length} canais encontrados`);
         setProgress(60);
       } else {
-        // Parse JSON directly
+        addLog('Validando arquivo JSON...');
         setProgress(40);
         processedData = JSON.parse(fileContent);
         
@@ -204,6 +282,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         if (!processedData.metadata || !processedData.channels) {
           throw new Error('JSON deve conter "metadata" e "channels"');
         }
+        addLog(`JSON válido: ${processedData.channels.length} canais`);
         setProgress(60);
       }
 
@@ -212,21 +291,14 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       setStats(uploadStats);
       setPreview(processedData.channels.slice(0, 50));
       setConvertedData(processedData);
-      setProgress(80);
+      setProgress(70);
 
-      // Send to Edge Function
-      console.log('Enviando dados para ingest-catalogo...');
-      const { data: result, error } = await supabase.functions.invoke('ingest-catalogo', {
-        body: processedData
-      });
+      // Upload in batches
+      addLog('Iniciando upload para o Supabase...');
+      await uploadInBatches(processedData);
 
-      if (error) {
-        console.error('Error from Edge Function:', error);
-        throw new Error(error.message);
-      }
-
-      console.log('Resultado da importação:', result);
       setProgress(100);
+      addLog('🎉 Processo concluído com sucesso!');
 
       toast({
         title: "✅ Importação concluída!",
@@ -236,6 +308,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       onUploadComplete();
 
     } catch (error: any) {
+      addLog(`❌ Erro: ${error.message}`);
       console.error('Erro na importação:', error);
       toast({
         title: "Erro na importação",
@@ -287,11 +360,63 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
               <span>
-                {converting ? "Convertendo M3U..." : "Processando dados..."}
+                {converting ? "Convertendo M3U..." : uploading ? "Enviando dados..." : "Processando..."}
               </span>
               <span>{progress}%</span>
             </div>
             <Progress value={progress} className="w-full" />
+            
+            {batchProgress && (
+              <div className="text-xs text-muted-foreground space-y-1">
+                <div>Lote {batchProgress.current}/{batchProgress.total}</div>
+                <div>Processados: {batchProgress.processed.toLocaleString()} itens</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {uploadComplete && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 text-green-700">
+              <CheckCircle className="h-5 w-5" />
+              <span className="font-medium">✅ Catálogo atualizado com sucesso</span>
+            </div>
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="link" size="sm" className="h-auto p-0 text-green-600 hover:text-green-700">
+                  <Eye className="h-3 w-3 mr-1" />
+                  Ver detalhes técnicos
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[80vh]">
+                <DialogHeader>
+                  <DialogTitle>Log de Upload</DialogTitle>
+                  <DialogDescription>
+                    Detalhes técnicos do processo de importação
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-medium">Log completo:</span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        navigator.clipboard.writeText(uploadLogs.join('\n'));
+                        toast({ title: "Log copiado!", description: "Log copiado para a área de transferência" });
+                      }}
+                    >
+                      Copiar Log
+                    </Button>
+                  </div>
+                  <div className="max-h-[400px] overflow-y-auto bg-slate-900 text-slate-100 p-4 rounded-lg text-xs font-mono">
+                    {uploadLogs.map((log, index) => (
+                      <div key={index} className="mb-1">{log}</div>
+                    ))}
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         )}
 
@@ -314,7 +439,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div>
                 <span className="text-muted-foreground">Total de Canais:</span>
-                <div className="font-medium text-telebox-blue">{stats.totalChannels}</div>
+                <div className="font-medium text-telebox-blue">{stats.totalChannels.toLocaleString()}</div>
               </div>
               <div>
                 <span className="text-muted-foreground">Grupos Únicos:</span>
@@ -322,11 +447,11 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
               </div>
               <div>
                 <span className="text-muted-foreground">Com Logo:</span>
-                <div className="font-medium text-telebox-blue">{stats.channelsWithLogo}</div>
+                <div className="font-medium text-telebox-blue">{stats.channelsWithLogo.toLocaleString()}</div>
               </div>
               <div>
                 <span className="text-muted-foreground">Tamanho JSON:</span>
-                <div className="font-medium text-telebox-blue">{stats.jsonSize} KB</div>
+                <div className="font-medium text-telebox-blue">{stats.jsonSize.toLocaleString()} KB</div>
               </div>
             </div>
           </div>
@@ -343,7 +468,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
 
         <div className="text-xs text-muted-foreground space-y-1">
           <p>• Arquivos M3U serão convertidos automaticamente para JSON</p>
-          <p>• Arquivos JSON devem ter a estrutura: metadata + channels</p>
+          <p>• Arquivos grandes são enviados em lotes de 500 itens para melhor performance</p>
           <p>• O processamento ocorre automaticamente após o upload</p>
           <p>• Dados antigos serão desativados automaticamente</p>
         </div>

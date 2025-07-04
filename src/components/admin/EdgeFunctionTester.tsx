@@ -26,7 +26,7 @@ const EdgeFunctionTester = ({ userId }: EdgeFunctionTesterProps) => {
       console.log('🔧 Iniciando teste completo do sistema...');
 
       // Test 1: Debug (ping básico)
-      console.log('🔧 1/3 Testando Debug...');
+      console.log('🔧 1/4 Testando Debug...');
       try {
         const debugResponse = await supabase.functions.invoke('debug-test', {
           body: { test: 'system test' }
@@ -45,8 +45,26 @@ const EdgeFunctionTester = ({ userId }: EdgeFunctionTesterProps) => {
         });
       }
 
-      // Test 2: M3U Import (demo com 100 linhas)
-      console.log('🔧 2/3 Testando Importação M3U...');
+      // Test 2: EPG
+      console.log('🔧 2/4 Testando EPG...');
+      try {
+        const epgResponse = await supabase.functions.invoke('fetch-epg-simple');
+        results.push({
+          name: 'EPG',
+          success: !epgResponse.error,
+          data: epgResponse.data,
+          error: epgResponse.error?.message
+        });
+      } catch (error: any) {
+        results.push({
+          name: 'EPG',
+          success: false,
+          error: error.message
+        });
+      }
+
+      // Test 3: M3U Import (demo com 3 canais)
+      console.log('🔧 3/4 Testando Importação M3U...');
       try {
         const demoData = {
           metadata: {
@@ -103,8 +121,8 @@ const EdgeFunctionTester = ({ userId }: EdgeFunctionTesterProps) => {
         });
       }
 
-      // Test 3: TMDB Enrich
-      console.log('🔧 3/3 Testando TMDB Enrich...');
+      // Test 4: TMDB Enrich
+      console.log('🔧 4/4 Testando TMDB Enrich...');
       try {
         const tmdbResponse = await supabase.functions.invoke('enrich-tmdb', {
           body: { batchSize: 3 }
@@ -242,6 +260,7 @@ const EdgeFunctionTester = ({ userId }: EdgeFunctionTesterProps) => {
 
         <div className="text-xs text-muted-foreground space-y-1">
           <p>• <strong>Debug:</strong> Testa conectividade básica das Edge Functions</p>
+          <p>• <strong>EPG:</strong> Busca dados de programação TV em tempo real</p>
           <p>• <strong>M3U Import:</strong> Simula importação de 3 canais demo</p>
           <p>• <strong>TMDB Enrich:</strong> Testa busca de metadados para filmes/séries</p>
         </div>

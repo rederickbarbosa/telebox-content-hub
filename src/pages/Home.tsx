@@ -1,375 +1,332 @@
-
 import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { supabase } from "@/integrations/supabase/client";
-import { Check, Star, Tv, Film, Radio, ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { CheckCircle } from "@/components/ui/check-circle";
+import { Instagram, Facebook, Send, MessageCircle, Clock } from 'lucide-react';
+import { supabase } from "@/integrations/supabase/client";
+import ChannelCarousel from "@/components/home/ChannelCarousel";
 
-interface CatalogItem {
-  id: string;
-  nome: string;
-  tipo: string;
-  grupo: string;
-  logo: string;
-  poster_url?: string;
-  backdrop_url?: string;
+interface Settings {
+  teste_horas?: string;
+  whatsapp_numero?: string;
+  plano_destaque?: string;
+  instagram_url?: string;
+  facebook_url?: string;
+  telegram_url?: string;
 }
 
 const Home = () => {
-  const [heroContent, setHeroContent] = useState<CatalogItem | null>(null);
-  const [popularChannels, setPopularChannels] = useState<CatalogItem[]>([]);
-  const [featuredContent, setFeaturedContent] = useState<CatalogItem[]>([]);
+  const [settings, setSettings] = useState<Settings>({});
 
   useEffect(() => {
-    loadHeroContent();
-    loadPopularChannels();
-    loadFeaturedContent();
+    loadSettings();
   }, []);
 
-  const loadHeroContent = async () => {
-    try {
-      const { data } = await supabase
-        .from('catalogo_m3u_live')
-        .select('*')
-        .eq('tipo', 'filme')
-        .eq('ativo', true)
-        .not('poster_url', 'is', null)
-        .limit(1)
-        .single();
-      
-      if (data) {
-        setHeroContent(data);
-      }
-    } catch (error) {
-      console.log('No hero content available');
+  const loadSettings = async () => {
+    const { data } = await supabase
+      .from('admin_settings')
+      .select('*');
+    
+    if (data) {
+      const settingsObj = data.reduce((acc, setting) => {
+        acc[setting.setting_key] = setting.setting_value;
+        return acc;
+      }, {});
+      setSettings(settingsObj);
     }
   };
-
-  const loadPopularChannels = async () => {
-    try {
-      const { data } = await supabase
-        .from('catalogo_m3u_live')
-        .select('*')
-        .eq('tipo', 'canal')
-        .eq('ativo', true)
-        .not('logo', 'is', null)
-        .order('nome')
-        .limit(20);
-      
-      if (data) {
-        setPopularChannels(data);
-      }
-    } catch (error) {
-      console.log('Error loading channels:', error);
-    }
-  };
-
-  const loadFeaturedContent = async () => {
-    try {
-      const { data } = await supabase
-        .from('catalogo_m3u_live')
-        .select('*')
-        .in('tipo', ['filme', 'serie'])
-        .eq('ativo', true)
-        .not('poster_url', 'is', null)
-        .order('nome')
-        .limit(12);
-      
-      if (data) {
-        setFeaturedContent(data);
-      }
-    } catch (error) {
-      console.log('Error loading featured content:', error);
-    }
-  };
-
-  const whatsappUrl = "https://wa.me/5511911837288?text=Olá!%20Gostaria%20de%20contratar%20o%20TELEBOX%20IPTV";
-
-  const heroStyle = heroContent?.poster_url 
-    ? {
-        backgroundImage: `linear-gradient(rgba(0,0,0,.55), rgba(0,0,0,.55)), url(${heroContent.poster_url})`,
-        backgroundSize: 'cover',
-        backgroundPosition: 'center'
-      }
-    : {};
 
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
-      <section 
-        className="bg-gradient-hero text-white py-20 px-4"
-        style={heroStyle}
-      >
-        <div className="container mx-auto text-center max-w-4xl">
-          <h1 className="text-5xl md:text-6xl font-bold mb-6">
-            TELEBOX IPTV
-          </h1>
-          <p className="text-xl md:text-2xl mb-8 opacity-90">
-            A melhor experiência em entretenimento digital
-          </p>
-          <p className="text-lg mb-8 max-w-2xl mx-auto opacity-80">
-            Milhares de canais, filmes e séries em alta qualidade. 
-            Acesse de qualquer dispositivo, a qualquer hora.
-          </p>
-          
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button 
-              size="lg" 
-              className="bg-yellow-400 hover:bg-yellow-300 text-black font-semibold px-8"
-              asChild
-            >
-              <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">
-                Teste Grátis por 6h
-              </a>
-            </Button>
-            <Button 
-              size="lg" 
-              variant="outline" 
-              className="border-white text-white hover:bg-white hover:text-black px-8"
-              asChild
-            >
-              <Link to="/catalogo">
-                Ver Catálogo
-              </Link>
-            </Button>
+      <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
+        {/* Background with gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-hero" />
+        
+        <div className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 text-center text-white">
+          <div className="max-w-4xl mx-auto">
+            <h1 className="text-4xl md:text-6xl font-bold mb-6 animate-fade-in">
+              A melhor experiência em <span className="text-yellow-400">IPTV</span>
+            </h1>
+            <p className="text-xl md:text-2xl mb-8 text-gray-300 animate-fade-in" style={{ animationDelay: '0.2s' }}>
+              Assista seus canais, filmes e séries favoritos em qualquer lugar
+            </p>
+            
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-fade-in" style={{ animationDelay: '0.4s' }}>
+              <Button 
+                variant="hero" 
+                size="xl" 
+                className="w-full sm:w-auto"
+                onClick={() => window.open(`https://wa.me/${settings.whatsapp_numero || '5511911837288'}?text=Olá! Gostaria de fazer um teste grátis de ${settings.teste_horas || '6'} horas.`, '_blank')}
+              >
+                🎯 Teste Grátis {settings.teste_horas || '6'}h
+              </Button>
+              <Button 
+                variant="outline" 
+                size="xl" 
+                className="w-full sm:w-auto bg-yellow-400 hover:bg-yellow-300 text-black border-yellow-400 hover:border-yellow-300"
+                onClick={() => window.open(`https://wa.me/${settings.whatsapp_numero || '5511911837288'}?text=Olá! Quero contratar o plano mensal por R$ 30,00.`, '_blank')}
+              >
+                💎 Contratar Agora
+              </Button>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Popular Channels Carousel */}
-      {popularChannels.length > 0 && (
-        <section className="bg-white py-16">
-          <div className="container mx-auto px-4">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl font-bold mb-4">Canais Mais Populares</h2>
-              <p className="text-gray-600">
-                Confira alguns dos canais disponíveis em nossa plataforma
-              </p>
-            </div>
-            
-            <div className="overflow-x-auto">
-              <div className="flex gap-6 pb-4" style={{ width: 'max-content' }}>
-                {popularChannels.map((channel) => (
-                  <Link
-                    key={channel.id} 
-                    to={`/programacao?canal=${encodeURIComponent(channel.nome)}`}
-                    className="flex-shrink-0 group"
-                  >
-                    <div className="w-24 h-24 bg-gradient-to-br from-telebox-blue/20 to-telebox-purple/20 rounded-lg p-4 flex items-center justify-center group-hover:scale-105 transition-transform shadow-telebox-card">
-                      {channel.logo ? (
-                        <img 
-                          src={channel.logo} 
-                          alt={channel.nome}
-                          className="w-full h-full object-contain"
-                        />
-                      ) : (
-                        <Tv className="w-8 h-8 text-telebox-blue" />
-                      )}
-                    </div>
-                    <p className="text-center text-sm font-medium mt-2 group-hover:text-telebox-blue transition-colors">
-                      {channel.nome}
-                    </p>
-                  </Link>
-                ))}
-              </div>
-            </div>
-            
-            <div className="text-center mt-8">
-              <Button variant="outline" asChild>
-                <Link to="/programacao" className="flex items-center gap-2">
-                  Ver Programação Completa
-                  <ArrowRight className="w-4 h-4" />
-                </Link>
-              </Button>
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* Plans Section */}
-      <section className="bg-gray-50 py-16">
-        <div className="container mx-auto px-4">
+      {/* Plan Section */}
+      <section className="py-16 bg-gray-50">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold mb-4">Escolha seu Plano</h2>
-            <p className="text-gray-600">
-              Planos flexíveis para sua necessidade
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              Escolha seu plano
+            </h2>
+            <p className="text-xl text-gray-600">
+              Preços especiais para você começar hoje mesmo
             </p>
           </div>
-          
+
           <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            {/* Plano 1 Mês - Popular */}
-            <Card className="relative shadow-telebox-card hover:shadow-lg transition-shadow border-2 border-telebox-blue">
-              <div className="absolute -top-3 left-1/2 transform -translate-x-1/2">
-                <Badge className="bg-telebox-blue text-white px-3 py-1">
-                  Popular
-                </Badge>
+            {/* Plan 1 Month - Popular */}
+            <div className="relative bg-white rounded-2xl shadow-telebox-card p-8 border-2 border-telebox-blue">
+              <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                <span className="bg-telebox-blue text-white px-4 py-2 rounded-full text-sm font-semibold">
+                  🔥 POPULAR
+                </span>
               </div>
-              <CardContent className="p-6 text-center">
-                <h3 className="text-xl font-bold mb-2">1 Mês</h3>
-                <div className="text-3xl font-bold text-telebox-blue mb-4">
-                  R$ 30,00
+              <div className="text-center">
+                <h3 className="text-2xl font-bold mb-2">1 Mês</h3>
+                <div className="mb-6">
+                  <span className="text-4xl font-bold text-telebox-blue">R$ 30</span>
+                  <span className="text-gray-600">/mês</span>
                 </div>
-                <ul className="space-y-3 mb-6">
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-green-500" />
-                    <span>Acesso completo</span>
+                <ul className="space-y-3 mb-8 text-left">
+                  <li className="flex items-center">
+                    <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+                    Mais de 200.000 conteúdos
                   </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-green-500" />
-                    <span>Todos os canais</span>
+                  <li className="flex items-center">
+                    <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+                    Canais em HD, FHD e 4K
                   </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-green-500" />
-                    <span>Filmes e séries</span>
+                  <li className="flex items-center">
+                    <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+                    Filmes e séries atualizados
                   </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-green-500" />
-                    <span>Suporte 24h</span>
+                  <li className="flex items-center">
+                    <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+                    Suporte 24h via WhatsApp
                   </li>
                 </ul>
                 <Button 
                   className="w-full bg-yellow-400 hover:bg-yellow-300 text-black font-semibold"
-                  asChild
+                  onClick={() => window.open(`https://wa.me/${settings.whatsapp_numero || '5511911837288'}?text=Olá! Quero contratar o plano de 1 mês por R$ 30,00.`, '_blank')}
                 >
-                  <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">
-                    Contratar Agora
-                  </a>
+                  Contratar Agora
                 </Button>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
-            {/* Plano 2 Meses */}
-            <Card className="shadow-telebox-card hover:shadow-lg transition-shadow">
-              <CardContent className="p-6 text-center">
-                <h3 className="text-xl font-bold mb-2">2 Meses</h3>
-                <div className="text-3xl font-bold text-telebox-blue mb-4">
-                  R$ 55,00
+            {/* Plan 2 Months */}
+            <div className="bg-white rounded-2xl shadow-telebox-card p-8">
+              <div className="text-center">
+                <h3 className="text-2xl font-bold mb-2">2 Meses</h3>
+                <div className="mb-6">
+                  <span className="text-4xl font-bold text-telebox-blue">R$ 55</span>
+                  <span className="text-gray-600">/2 meses</span>
                 </div>
-                <ul className="space-y-3 mb-6">
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-green-500" />
-                    <span>Acesso completo</span>
+                <ul className="space-y-3 mb-8 text-left">
+                  <li className="flex items-center">
+                    <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+                    Mais de 200.000 conteúdos
                   </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-green-500" />
-                    <span>Todos os canais</span>
+                  <li className="flex items-center">
+                    <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+                    Canais em HD, FHD e 4K
                   </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-green-500" />
-                    <span>Filmes e séries</span>
+                  <li className="flex items-center">
+                    <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+                    Filmes e séries atualizados
                   </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-green-500" />
-                    <span>Suporte 24h</span>
+                  <li className="flex items-center">
+                    <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+                    Suporte 24h via WhatsApp
                   </li>
                 </ul>
                 <Button 
                   variant="outline" 
                   className="w-full"
-                  asChild
+                  onClick={() => window.open(`https://wa.me/${settings.whatsapp_numero || '5511911837288'}?text=Olá! Quero contratar o plano de 2 meses por R$ 55,00.`, '_blank')}
                 >
-                  <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">
-                    Contratar Agora
-                  </a>
+                  Contratar
                 </Button>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
-            {/* Plano 3 Meses */}
-            <Card className="shadow-telebox-card hover:shadow-lg transition-shadow">
-              <CardContent className="p-6 text-center">
-                <h3 className="text-xl font-bold mb-2">3 Meses</h3>
-                <div className="text-3xl font-bold text-telebox-blue mb-4">
-                  R$ 80,00
+            {/* Plan 3 Months */}
+            <div className="bg-white rounded-2xl shadow-telebox-card p-8">
+              <div className="text-center">
+                <h3 className="text-2xl font-bold mb-2">3 Meses</h3>
+                <div className="mb-6">
+                  <span className="text-4xl font-bold text-telebox-blue">R$ 80</span>
+                  <span className="text-gray-600">/3 meses</span>
                 </div>
-                <ul className="space-y-3 mb-6">
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-green-500" />
-                    <span>Acesso completo</span>
+                <ul className="space-y-3 mb-8 text-left">
+                  <li className="flex items-center">
+                    <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+                    Mais de 200.000 conteúdos
                   </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-green-500" />
-                    <span>Todos os canais</span>
+                  <li className="flex items-center">
+                    <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+                    Canais em HD, FHD e 4K
                   </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-green-500" />
-                    <span>Filmes e séries</span>
+                  <li className="flex items-center">
+                    <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+                    Filmes e séries atualizados
                   </li>
-                  <li className="flex items-center gap-2">
-                    <Check className="w-4 h-4 text-green-500" />
-                    <span>Suporte 24h</span>
+                  <li className="flex items-center">
+                    <CheckCircle className="h-5 w-5 text-green-500 mr-3" />
+                    Suporte 24h via WhatsApp
                   </li>
                 </ul>
                 <Button 
                   variant="outline" 
                   className="w-full"
-                  asChild
+                  onClick={() => window.open(`https://wa.me/${settings.whatsapp_numero || '5511911837288'}?text=Olá! Quero contratar o plano de 3 meses por R$ 80,00.`, '_blank')}
                 >
-                  <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">
-                    Contratar Agora
-                  </a>
+                  Contratar
                 </Button>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Featured Content */}
-      {featuredContent.length > 0 && (
-        <section className="bg-white py-16">
-          <div className="container mx-auto px-4">
-            <div className="text-center mb-12">
-              <h2 className="text-3xl font-bold mb-4">Destaques do Catálogo</h2>
+      {/* Channel Carousel */}
+      <ChannelCarousel />
+
+      {/* Features Section */}
+      <section className="py-16 bg-white">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              Recursos Incríveis
+            </h2>
+            <p className="text-xl text-gray-600">
+              Aproveite ao máximo sua experiência com a TELEBOX
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {/* Feature 1 */}
+            <div className="text-center">
+              <div className="flex items-center justify-center h-16 w-16 mx-auto mb-4 bg-telebox-blue rounded-full text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-play-circle"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+              </div>
+              <h3 className="text-xl font-semibold mb-2">
+                Conteúdo Ilimitado
+              </h3>
               <p className="text-gray-600">
-                Filmes e séries em destaque na nossa plataforma
+                Assista filmes, séries e canais ao vivo sem restrições.
               </p>
             </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
-              {featuredContent.map((item) => (
-                <Link
-                  key={item.id}
-                  to="/catalogo"
-                  className="group"
-                >
-                  <div className="aspect-[2/3] bg-gradient-to-br from-telebox-blue/20 to-telebox-purple/20 rounded-lg overflow-hidden shadow-telebox-card group-hover:shadow-lg transition-shadow">
-                    {item.poster_url ? (
-                      <img 
-                        src={item.poster_url} 
-                        alt={item.nome}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        {item.tipo === 'filme' ? (
-                          <Film className="w-12 h-12 text-telebox-blue" />
-                        ) : (
-                          <Radio className="w-12 h-12 text-telebox-blue" />
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-center text-sm font-medium mt-2 group-hover:text-telebox-blue transition-colors line-clamp-2">
-                    {item.nome}
-                  </p>
-                </Link>
-              ))}
+
+            {/* Feature 2 */}
+            <div className="text-center">
+              <div className="flex items-center justify-center h-16 w-16 mx-auto mb-4 bg-telebox-blue rounded-full text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-tv-2"><rect width="20" height="18" x="2" y="3" rx="2" ry="2"/><path d="M17 21H7"/></svg>
+              </div>
+              <h3 className="text-xl font-semibold mb-2">
+                Qualidade Premium
+              </h3>
+              <p className="text-gray-600">
+                Desfrute de imagem em HD, FHD e 4K para uma experiência imersiva.
+              </p>
             </div>
-            
-            <div className="text-center mt-8">
-              <Button variant="outline" asChild>
-                <Link to="/catalogo" className="flex items-center gap-2">
-                  Ver Catálogo Completo
-                  <ArrowRight className="w-4 h-4" />
-                </Link>
-              </Button>
+
+            {/* Feature 3 */}
+            <div className="text-center">
+              <div className="flex items-center justify-center h-16 w-16 mx-auto mb-4 bg-telebox-blue rounded-full text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-headset"><path d="M3 18v-3a9 9 0 0 1 18 0v3"/><path d="M19 6v-1a9 9 0 0 0-18 0v1"/><path d="M2 15h1"/><path d="M22 15h-1"/><path d="M2 9h1"/><path d="M22 9h-1"/><path d="M8 21h8"/></svg>
+              </div>
+              <h3 className="text-xl font-semibold mb-2">
+                Suporte 24 Horas
+              </h3>
+              <p className="text-gray-600">
+                Nossa equipe está sempre pronta para ajudar você.
+              </p>
             </div>
           </div>
-        </section>
-      )}
+        </div>
+      </section>
+
+      {/* Apps Section */}
+      <section className="py-16 bg-gray-50">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">
+              Aplicativos Compatíveis
+            </h2>
+            <p className="text-xl text-gray-600">
+              Use a TELEBOX em seus dispositivos favoritos
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-4 gap-8">
+            {/* App 1 */}
+            <div className="text-center">
+              <img
+                src="https://logos-download.com/wp-content/uploads/2016/11/Android_logo_svg-700x212.png"
+                alt="Android"
+                className="h-12 w-auto mx-auto mb-4"
+              />
+              <h3 className="text-xl font-semibold mb-2">Android</h3>
+              <p className="text-gray-600">
+                Disponível para smartphones e tablets Android.
+              </p>
+            </div>
+
+            {/* App 2 */}
+            <div className="text-center">
+              <img
+                src="https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Apple_logo_black.svg/1667px-Apple_logo_black.svg.png"
+                alt="iOS"
+                className="h-12 w-auto mx-auto mb-4"
+              />
+              <h3 className="text-xl font-semibold mb-2">iOS</h3>
+              <p className="text-gray-600">
+                Aproveite no seu iPhone e iPad.
+              </p>
+            </div>
+
+            {/* App 3 */}
+            <div className="text-center">
+              <img
+                src="https://cdn4.iconfinder.com/data/icons/logos-and-brands/512/353_Windows_logo-512.png"
+                alt="Windows"
+                className="h-12 w-auto mx-auto mb-4"
+              />
+              <h3 className="text-xl font-semibold mb-2">Windows</h3>
+              <p className="text-gray-600">
+                Assista no seu PC com Windows.
+              </p>
+            </div>
+
+            {/* App 4 */}
+            <div className="text-center">
+              <img
+                src="https://logodownload.org/wp-content/uploads/2017/04/samsung-logo-5.png"
+                alt="Samsung TV"
+                className="h-12 w-auto mx-auto mb-4"
+              />
+              <h3 className="text-xl font-semibold mb-2">Samsung TV</h3>
+              <p className="text-gray-600">
+                Aplicativo disponível para Smart TVs Samsung.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
 };
