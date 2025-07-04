@@ -125,43 +125,61 @@ export type Database = {
       }
       catalogo_m3u_live: {
         Row: {
+          ano: number | null
           ativo: boolean | null
+          backdrop_url: string | null
+          classificacao: number | null
           created_at: string | null
+          descricao: string | null
           grupo: string | null
           id: string
           import_uuid: string | null
           logo: string | null
           nome: string
+          poster_url: string | null
           qualidade: string | null
           tipo: string | null
+          tmdb_id: number | null
           tvg_id: string | null
           updated_at: string | null
           url: string
         }
         Insert: {
+          ano?: number | null
           ativo?: boolean | null
+          backdrop_url?: string | null
+          classificacao?: number | null
           created_at?: string | null
+          descricao?: string | null
           grupo?: string | null
           id?: string
           import_uuid?: string | null
           logo?: string | null
           nome: string
+          poster_url?: string | null
           qualidade?: string | null
           tipo?: string | null
+          tmdb_id?: number | null
           tvg_id?: string | null
           updated_at?: string | null
           url: string
         }
         Update: {
+          ano?: number | null
           ativo?: boolean | null
+          backdrop_url?: string | null
+          classificacao?: number | null
           created_at?: string | null
+          descricao?: string | null
           grupo?: string | null
           id?: string
           import_uuid?: string | null
           logo?: string | null
           nome?: string
+          poster_url?: string | null
           qualidade?: string | null
           tipo?: string | null
+          tmdb_id?: number | null
           tvg_id?: string | null
           updated_at?: string | null
           url?: string

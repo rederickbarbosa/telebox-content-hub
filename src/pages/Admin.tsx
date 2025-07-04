@@ -81,17 +81,17 @@ const Admin = () => {
   };
 
   const loadStats = async () => {
-    const [conteudos, catalogo, users] = await Promise.all([
+    const [conteudos, catalogoLive, users] = await Promise.all([
       supabase.from('conteudos').select('tipo', { count: 'exact' }),
-      supabase.from('catalogo_m3u').select('tipo', { count: 'exact' }),
+      supabase.from('catalogo_m3u_live').select('tipo', { count: 'exact' }).eq('ativo', true),
       supabase.from('profiles').select('id', { count: 'exact' })
     ]);
 
     const conteudosFilmes = conteudos.data?.filter(c => c.tipo === 'filme').length || 0;
     const conteudosSeries = conteudos.data?.filter(c => c.tipo === 'serie').length || 0;
-    const catalogoFilmes = catalogo.data?.filter(c => c.tipo === 'filme').length || 0;
-    const catalogoSeries = catalogo.data?.filter(c => c.tipo === 'serie').length || 0;
-    const catalogoCanais = catalogo.data?.filter(c => c.tipo === 'canal').length || 0;
+    const catalogoFilmes = catalogoLive.data?.filter(c => c.tipo === 'filme').length || 0;
+    const catalogoSeries = catalogoLive.data?.filter(c => c.tipo === 'serie').length || 0;
+    const catalogoCanais = catalogoLive.data?.filter(c => c.tipo === 'canal').length || 0;
 
     setStats({
       totalFilmes: Math.max(conteudosFilmes, catalogoFilmes),
