@@ -1,5 +1,5 @@
 
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, FileVideo, CheckCircle, AlertCircle, Database, Download, Eye, Settings, Copy } from "lucide-react";
+import { Upload, FileVideo, CheckCircle, AlertCircle, Database, Download, Eye, Settings, Copy, Clock } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -54,16 +54,52 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
   const [progress, setProgress] = useState(0);
   const [currentChunk, setCurrentChunk] = useState(0);
   const [totalChunks, setTotalChunks] = useState(0);
-  const [chunkSize, setChunkSize] = useState(100);
+  const [chunkSize, setChunkSize] = useState(() => {
+    const saved = localStorage.getItem('telebox-chunk-size');
+    return saved ? parseInt(saved) : 100;
+  });
   const [stats, setStats] = useState<UploadStats | null>(null);
   const [preview, setPreview] = useState<ParsedChannel[]>([]);
   const [convertedData, setConvertedData] = useState<ConvertedData | null>(null);
   const [uploadLogs, setUploadLogs] = useState<UploadLog[]>([]);
   const [uploadComplete, setUploadComplete] = useState(false);
-  const [eta, setEta] = useState<string>('');
+  const [elapsedTime, setElapsedTime] = useState('00:00:00');
+  const [eta, setEta] = useState('');
   const [startTime, setStartTime] = useState<number>(0);
+  const [dragOver, setDragOver] = useState(false);
+  const [uploadMode, setUploadMode] = useState<'local' | 'server'>('local');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
+
+  const updateChunkSize = (newSize: number) => {
+    setChunkSize(newSize);
+    localStorage.setItem('telebox-chunk-size', newSize.toString());
+  };
+
+  const formatTime = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const startTimer = () => {
+    const start = Date.now();
+    setStartTime(start);
+    
+    timerRef.current = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - start) / 1000);
+      setElapsedTime(formatTime(elapsed));
+    }, 1000);
+  };
+
+  const stopTimer = () => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
 
   const addLog = (level: 'info' | 'success' | 'warning' | 'error', message: string) => {
     const log: UploadLog = {
@@ -82,15 +118,12 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     const etaMs = remaining / rate;
     const etaSeconds = Math.round(etaMs / 1000);
     
-    if (etaSeconds < 60) return `${etaSeconds}s restantes`;
-    const etaMinutes = Math.round(etaSeconds / 60);
-    return `${etaMinutes}min restantes`;
+    return formatTime(etaSeconds);
   };
 
   const parseEXTINF = (line: string): Partial<ParsedChannel> => {
     const channel: Partial<ParsedChannel> = {};
     
-    // Extract duration
     const durationMatch = line.match(/#EXTINF:([^,\s]+)/);
     if (durationMatch) {
       channel.duration = durationMatch[1];
@@ -98,31 +131,26 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       channel.duration = '-1';
     }
 
-    // Extract channel name (after last comma)
     const nameMatch = line.match(/,([^,]+)$/);
     if (nameMatch) {
       channel.name = nameMatch[1].trim();
     }
 
-    // Extract tvg-id
     const tvgIdMatch = line.match(/tvg-id="([^"]*)"/);
     if (tvgIdMatch) {
       channel.tvg_id = tvgIdMatch[1];
     }
 
-    // Extract tvg-name
     const tvgNameMatch = line.match(/tvg-name="([^"]*)"/);
     if (tvgNameMatch) {
       channel.tvg_name = tvgNameMatch[1];
     }
 
-    // Extract tvg-logo
     const tvgLogoMatch = line.match(/tvg-logo="([^"]*)"/);
     if (tvgLogoMatch) {
       channel.tvg_logo = tvgLogoMatch[1];
     }
 
-    // Extract group-title
     const groupTitleMatch = line.match(/group-title="([^"]*)"/);
     if (groupTitleMatch) {
       channel.group_title = groupTitleMatch[1];
@@ -212,83 +240,112 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
 
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  const uploadInChunks = async (data: ConvertedData) => {
+  const uploadChunkWithRetry = async (chunk: ParsedChannel[], chunkIndex: number): Promise<boolean> => {
+    const chunkData = {
+      metadata: convertedData!.metadata,
+      channels: chunk
+    };
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        addLog('info', `Bloco ${chunkIndex + 1}/${totalChunks} (${chunk.length} itens) - Tentativa ${attempt}`);
+
+        const { data: result, error } = await supabase.functions.invoke('ingest-catalogo', {
+          body: chunkData
+        });
+
+        if (error) {
+          throw error;
+        }
+
+        addLog('success', `✓ Bloco ${chunkIndex + 1} enviado com sucesso (${result?.processed || chunk.length} itens)`);
+        return true;
+
+      } catch (error: any) {
+        const delay = Math.pow(2, attempt - 1) * 2000; // 2s, 6s, 12s
+        
+        if (attempt < 3) {
+          addLog('warning', `⚠ Erro no bloco ${chunkIndex + 1}, tentativa ${attempt}: ${error.message}`);
+          addLog('info', `Aguardando ${delay/1000}s antes da próxima tentativa...`);
+          await sleep(delay);
+        } else {
+          addLog('error', `✖ Falha definitiva no bloco ${chunkIndex + 1} após 3 tentativas: ${error.message}`);
+          return false;
+        }
+      }
+    }
+    return false;
+  };
+
+  const uploadInPhases = async (data: ConvertedData) => {
     const chunks: ParsedChannel[][] = [];
     
-    // Divide channels into chunks
+    // Fase A: Dividir em chunks locais
     for (let i = 0; i < data.channels.length; i += chunkSize) {
       chunks.push(data.channels.slice(i, i + chunkSize));
     }
 
     setTotalChunks(chunks.length);
-    addLog('info', `Iniciando upload sequencial em ${chunks.length} blocos de ${chunkSize} itens cada`);
+    addLog('info', `Iniciando Fase A: Upload local em ${chunks.length} blocos de ${chunkSize} itens cada`);
+    setUploadMode('local');
 
+    // Fase A: Envio sequencial
     for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      let retries = 0;
-      let success = false;
-
-      const chunkData = {
-        metadata: data.metadata,
-        channels: chunk
-      };
-
-      while (!success && retries < 3) {
-        try {
-          addLog('info', `Enviando bloco ${i + 1}/${chunks.length} (${chunk.length} itens) - Tentativa ${retries + 1}`);
-
-          const { data: result, error } = await supabase.functions.invoke('ingest-catalogo', {
-            body: chunkData
-          });
-
-          if (error) {
-            throw error;
-          }
-
-          success = true;
-          setCurrentChunk(i + 1);
-          const progressPercent = Math.round(((i + 1) / chunks.length) * 100);
-          setProgress(progressPercent);
-
-          // Calculate ETA
-          const newEta = calculateETA(i + 1, chunks.length, startTime);
-          setEta(newEta);
-
-          addLog('success', `Bloco ${i + 1} processado com sucesso (${result.processed || chunk.length} itens)`);
-
-        } catch (error: any) {
-          retries++;
-          const delay = Math.pow(2, retries - 1) * 2000; // 2s, 4s, 8s
-          
-          addLog('warning', `Erro no bloco ${i + 1}, tentativa ${retries}: ${error.message}`);
-          
-          if (retries < 3) {
-            addLog('info', `Aguardando ${delay/1000}s antes da próxima tentativa...`);
-            await sleep(delay);
-          }
-        }
-      }
-
+      const success = await uploadChunkWithRetry(chunks[i], i);
+      
       if (!success) {
-        addLog('error', `Falha crítica no bloco ${i + 1} após 3 tentativas`);
-        throw new Error(`Falha ao processar bloco ${i + 1} após 3 tentativas`);
+        // Fallback para Fase B
+        addLog('warning', '⤴ Mudando para modo servidor...');
+        setUploadMode('server');
+        
+        // Implementar Fase B aqui se necessário
+        // Por ora, abortar com erro
+        throw new Error('Falha no upload após tentativas locais. Fase servidor não implementada ainda.');
       }
+
+      setCurrentChunk(i + 1);
+      const progressPercent = Math.round(((i + 1) / chunks.length) * 100);
+      setProgress(progressPercent);
+
+      const newEta = calculateETA(i + 1, chunks.length, startTime);
+      setEta(newEta);
     }
 
-    addLog('success', `✅ Upload concluído: ${data.channels.length} itens processados em ${chunks.length} blocos`);
+    addLog('success', `✔ Upload concluído: ${data.channels.length} itens processados em ${chunks.length} blocos`);
     setUploadComplete(true);
   };
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(true);
+  }, []);
 
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOver(false);
+    
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      processFile(files[0]);
+    }
+  }, []);
+
+  const processFile = async (file: File) => {
     // Reset states
     setUploadLogs([]);
     setUploadComplete(false);
     setCurrentChunk(0);
     setTotalChunks(0);
     setEta('');
+    setElapsedTime('00:00:00');
 
     // Validate file type
     const fileName = file.name.toLowerCase();
@@ -307,7 +364,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     setUploading(true);
     setConverting(fileName.endsWith('.m3u') || fileName.endsWith('.m3u8'));
     setProgress(0);
-    setStartTime(Date.now());
+    startTimer();
 
     try {
       addLog('info', `Iniciando processamento do arquivo: ${file.name} (${Math.round(file.size / 1024)} KB)`);
@@ -329,7 +386,6 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         setProgress(40);
         processedData = JSON.parse(fileContent);
         
-        // Validate JSON structure
         if (!processedData.metadata || !processedData.channels) {
           throw new Error('JSON deve conter "metadata" e "channels"');
         }
@@ -344,9 +400,8 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       setConvertedData(processedData);
       setProgress(70);
 
-      // Upload in chunks with back-pressure
-      addLog('info', `Iniciando upload sequencial com blocos de ${chunkSize} itens...`);
-      await uploadInChunks(processedData);
+      // Upload in phases
+      await uploadInPhases(processedData);
 
       setProgress(100);
       setEta('Concluído!');
@@ -370,9 +425,19 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     } finally {
       setUploading(false);
       setConverting(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      stopTimer();
+    }
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    await processFile(file);
+    
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
     }
   };
 
@@ -399,7 +464,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="chunk-size">Tamanho do Bloco</Label>
-                  <Select value={chunkSize.toString()} onValueChange={(value) => setChunkSize(parseInt(value))}>
+                  <Select value={chunkSize.toString()} onValueChange={(value) => updateChunkSize(parseInt(value))}>
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
@@ -425,21 +490,28 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-6 text-center hover:border-telebox-blue/50 transition-colors">
+        <div 
+          className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors cursor-pointer ${
+            dragOver 
+              ? 'border-telebox-blue bg-blue-50' 
+              : 'border-muted-foreground/25 hover:border-telebox-blue/50'
+          }`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+        >
           <FileVideo className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-          <Label htmlFor="catalog-file" className="cursor-pointer">
-            <div className="space-y-2">
-              <p className="text-sm font-medium">
-                Clique para selecionar arquivo M3U ou JSON
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Formatos aceitos: .m3u, .m3u8, .json
-              </p>
-            </div>
-          </Label>
+          <div className="space-y-2">
+            <p className="text-sm font-medium">
+              {dragOver ? 'Solte o arquivo aqui' : 'Arraste arquivo aqui ou clique para selecionar'}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Formatos aceitos: .m3u, .m3u8, .json
+            </p>
+          </div>
           <Input
             ref={fileInputRef}
-            id="catalog-file"
             type="file"
             accept=".m3u,.m3u8,.json"
             onChange={handleFileUpload}
@@ -449,7 +521,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         </div>
 
         {progress > 0 && (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <div className="flex items-center justify-between text-sm">
               <span>
                 {converting ? "Convertendo M3U..." : uploading ? "Enviando dados..." : "Processando..."}
@@ -459,10 +531,18 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
             <Progress value={progress} className="w-full" />
             
             {totalChunks > 0 && (
-              <div className="text-xs text-muted-foreground space-y-1">
-                <div>Bloco {currentChunk}/{totalChunks}</div>
-                <div>Tamanho do bloco: {chunkSize} itens</div>
-                {eta && <div>{eta}</div>}
+              <div className="grid grid-cols-2 gap-4 text-xs text-muted-foreground">
+                <div>
+                  <div className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" />
+                    <span>Decorrido: {elapsedTime}</span>
+                  </div>
+                  {eta && <div>Restante: {eta}</div>}
+                </div>
+                <div>
+                  <div>Bloco {currentChunk}/{totalChunks}</div>
+                  <div>Modo: {uploadMode === 'local' ? 'Local' : 'Servidor'}</div>
+                </div>
               </div>
             )}
           </div>
@@ -472,60 +552,9 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
           <div className="bg-green-50 border border-green-200 rounded-lg p-4">
             <div className="flex items-center gap-2 text-green-700 mb-2">
               <CheckCircle className="h-5 w-5" />
-              <span className="font-medium">✅ Catálogo atualizado com sucesso</span>
+              <span className="font-medium">✔ Catálogo atualizado com sucesso</span>
             </div>
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button variant="link" size="sm" className="h-auto p-0 text-green-600 hover:text-green-700">
-                  <Eye className="h-3 w-3 mr-1" />
-                  Ver detalhes técnicos
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-4xl max-h-[80vh]">
-                <DialogHeader>
-                  <DialogTitle>Log de Upload</DialogTitle>
-                  <DialogDescription>
-                    Detalhes técnicos do processo de importação
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium">Log completo ({uploadLogs.length} entradas):</span>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={copyLogsToClipboard}
-                      className="flex items-center gap-2"
-                    >
-                      <Copy className="h-4 w-4" />
-                      Copiar Log
-                    </Button>
-                  </div>
-                  <div className="max-h-[400px] overflow-y-auto bg-slate-900 text-slate-100 p-4 rounded-lg text-xs font-mono">
-                    {uploadLogs.map((log, index) => (
-                      <div 
-                        key={index} 
-                        className={`mb-1 ${
-                          log.level === 'error' ? 'text-red-400' :
-                          log.level === 'warning' ? 'text-yellow-400' :
-                          log.level === 'success' ? 'text-green-400' :
-                          'text-slate-300'
-                        }`}
-                      >
-                        [{log.timestamp.split('T')[1].split('.')[0]}] {log.level.toUpperCase()}: {log.message}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        )}
-
-        {stats && (
-          <div className="bg-muted/30 rounded-lg p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="font-medium text-sm">📊 Estatísticas do Arquivo</h4>
+            <div className="flex items-center gap-2">
               {convertedData && (
                 <Button 
                   onClick={downloadJSON} 
@@ -534,10 +563,61 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
                   className="flex items-center gap-2"
                 >
                   <Download className="h-4 w-4" />
-                  Baixar JSON
+                  Baixar JSON gerado
                 </Button>
               )}
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="link" size="sm" className="h-auto p-0 text-green-600 hover:text-green-700">
+                    <Eye className="h-3 w-3 mr-1" />
+                    Ver detalhes técnicos
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-4xl max-h-[80vh]">
+                  <DialogHeader>
+                    <DialogTitle>Log de Upload</DialogTitle>
+                    <DialogDescription>
+                      Detalhes técnicos do processo de importação
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium">Log completo ({uploadLogs.length} entradas):</span>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={copyLogsToClipboard}
+                        className="flex items-center gap-2"
+                      >
+                        <Copy className="h-4 w-4" />
+                        Copiar log
+                      </Button>
+                    </div>
+                    <div className="max-h-[400px] overflow-y-auto bg-slate-900 text-slate-100 p-4 rounded-lg text-xs font-mono">
+                      {uploadLogs.map((log, index) => (
+                        <div 
+                          key={index} 
+                          className={`mb-1 ${
+                            log.level === 'error' ? 'text-red-400' :
+                            log.level === 'warning' ? 'text-yellow-400' :
+                            log.level === 'success' ? 'text-green-400' :
+                            'text-slate-300'
+                          }`}
+                        >
+                          [{log.timestamp.split('T')[1].split('.')[0]}] {log.level.toUpperCase()}: {log.message}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
+          </div>
+        )}
+
+        {stats && (
+          <div className="bg-muted/30 rounded-lg p-4 space-y-3">
+            <h4 className="font-medium text-sm">📊 Estatísticas do Arquivo</h4>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div>
                 <span className="text-muted-foreground">Total de Canais:</span>
@@ -570,9 +650,9 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
 
         <div className="text-xs text-muted-foreground space-y-1">
           <p>• Arquivos M3U serão convertidos automaticamente para JSON</p>
-          <p>• Upload sequencial com retry automático até 3x por bloco</p>
+          <p>• Upload sequencial com retry automático (2s → 6s → 12s)</p>
+          <p>• Drag & drop suportado - arraste arquivos sobre a área</p>
           <p>• Configure o tamanho dos blocos para otimizar a performance</p>
-          <p>• Dados antigos serão desativados automaticamente</p>
         </div>
       </CardContent>
     </Card>
