@@ -1,3 +1,4 @@
+
 import { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -212,7 +213,9 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     }
 
     setTotalChunks(chunks.length);
-    addLog('info', `Iniciando upload sequencial em ${chunks.length} blocos (Modo Local)`);
+    addLog('info', `Iniciando upload sequencial em ${chunks.length} blocos`);
+    addLog('info', `Primeiro bloco: ${firstChunkChannels.length} canais + metadata`);
+    addLog('info', `Blocos restantes: ${chunks.length - 1} x máximo ${chunkSize} canais cada`);
     
     let failedChunks = 0;
 
@@ -247,7 +250,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     }
 
     if (failedChunks === 0) {
-      addLog('success', `✔ Upload local concluído: ${data.channels.length} canais processados em ${chunks.length} blocos`);
+      addLog('success', `✔ Upload concluído: ${data.channels.length} canais processados em ${chunks.length} blocos`);
       setUploadComplete(true);
     }
   };
@@ -472,7 +475,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     try {
       addLog('info', `Iniciando processamento do arquivo: ${file.name} (${Math.round(file.size / 1024)} KB)`);
 
-      // Para arquivos muito grandes (>10MB), ir direto para modo servidor
+      // Para arquivos muito grandes (maior que 10MB), ir direto para modo servidor
       if (file.size > 10 * 1024 * 1024) {
         addLog('info', 'Arquivo grande detectado, usando modo servidor diretamente...');
         await uploadToServer(file);
@@ -594,7 +597,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
                   </Select>
                   <p className="text-xs text-muted-foreground mt-1">
                     Arquivos grandes: use blocos menores para maior estabilidade.<br/>
-                    Arquivos >10MB usam automaticamente o modo servidor.
+                    Arquivos maiores que 10MB usam automaticamente o modo servidor.
                   </p>
                 </div>
               </div>
@@ -797,8 +800,8 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         )}
 
         <div className="text-xs text-muted-foreground space-y-1">
-          <p>• <strong>Modo Local:</strong> Processa no navegador, ideal para arquivos pequenos (&lt;10MB)</p>
-          <p>• <strong>Modo Servidor:</strong> Processa no Supabase, otimizado para arquivos grandes (&gt;10MB)</p>
+          <p>• <strong>Modo Local:</strong> Processa no navegador, ideal para arquivos pequenos (menor que 10MB)</p>
+          <p>• <strong>Modo Servidor:</strong> Processa no Supabase, otimizado para arquivos grandes (maior que 10MB)</p>
           <p>• <strong>Fallback Automático:</strong> Se o modo local falhar, automaticamente usa o servidor</p>
           <p>• <strong>Logs Completos:</strong> Disponíveis para download mesmo em caso de erro</p>
           <p>• Drag & drop suportado - arraste arquivos sobre a área</p>
