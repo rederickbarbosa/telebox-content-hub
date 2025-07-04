@@ -1,10 +1,11 @@
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { Upload, FileVideo, CheckCircle, AlertCircle, Database } from "lucide-react";
+import { Upload, FileVideo, CheckCircle, AlertCircle, Database, Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -45,6 +46,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
   const [progress, setProgress] = useState(0);
   const [stats, setStats] = useState<UploadStats | null>(null);
   const [preview, setPreview] = useState<ParsedChannel[]>([]);
+  const [convertedData, setConvertedData] = useState<ConvertedData | null>(null);
   const { toast } = useToast();
 
   const parseEXTINF = (line: string): Partial<ParsedChannel> => {
@@ -144,6 +146,21 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     };
   };
 
+  const downloadJSON = () => {
+    if (!convertedData) return;
+    
+    const jsonString = JSON.stringify(convertedData, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `telebox-catalog-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -171,35 +188,44 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       const fileContent = await file.text();
       setProgress(20);
 
-      let convertedData: ConvertedData;
+      let processedData: ConvertedData;
 
       if (fileName.endsWith('.m3u') || fileName.endsWith('.m3u8')) {
         // Convert M3U to JSON
         setProgress(40);
-        convertedData = convertM3UToJSON(fileContent);
+        processedData = convertM3UToJSON(fileContent);
         setProgress(60);
       } else {
         // Parse JSON directly
         setProgress(40);
-        convertedData = JSON.parse(fileContent);
+        processedData = JSON.parse(fileContent);
+        
+        // Validate JSON structure
+        if (!processedData.metadata || !processedData.channels) {
+          throw new Error('JSON deve conter "metadata" e "channels"');
+        }
         setProgress(60);
       }
 
       // Calculate stats and show preview
-      const uploadStats = calculateStats(convertedData);
+      const uploadStats = calculateStats(processedData);
       setStats(uploadStats);
-      setPreview(convertedData.channels.slice(0, 50));
+      setPreview(processedData.channels.slice(0, 50));
+      setConvertedData(processedData);
       setProgress(80);
 
       // Send to Edge Function
-      const { error } = await supabase.functions.invoke('ingest-catalogo', {
-        body: convertedData
+      console.log('Enviando dados para ingest-catalogo...');
+      const { data: result, error } = await supabase.functions.invoke('ingest-catalogo', {
+        body: processedData
       });
 
       if (error) {
+        console.error('Error from Edge Function:', error);
         throw new Error(error.message);
       }
 
+      console.log('Resultado da importação:', result);
       setProgress(100);
 
       toast({
@@ -210,6 +236,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       onUploadComplete();
 
     } catch (error: any) {
+      console.error('Erro na importação:', error);
       toast({
         title: "Erro na importação",
         description: error.message,
@@ -260,7 +287,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
               <span>
-                {converting ? "Convertendo M3U..." : "Enviando dados..."}
+                {converting ? "Convertendo M3U..." : "Processando dados..."}
               </span>
               <span>{progress}%</span>
             </div>
@@ -269,8 +296,21 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         )}
 
         {stats && (
-          <div className="bg-muted/30 rounded-lg p-4 space-y-2">
-            <h4 className="font-medium text-sm">📊 Estatísticas do Arquivo</h4>
+          <div className="bg-muted/30 rounded-lg p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h4 className="font-medium text-sm">📊 Estatísticas do Arquivo</h4>
+              {convertedData && (
+                <Button 
+                  onClick={downloadJSON} 
+                  size="sm" 
+                  variant="outline"
+                  className="flex items-center gap-2"
+                >
+                  <Download className="h-4 w-4" />
+                  Baixar JSON
+                </Button>
+              )}
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
               <div>
                 <span className="text-muted-foreground">Total de Canais:</span>

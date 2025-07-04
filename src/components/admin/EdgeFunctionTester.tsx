@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,171 +14,18 @@ interface EdgeFunctionTesterProps {
 const EdgeFunctionTester = ({ userId }: EdgeFunctionTesterProps) => {
   const [testing, setTesting] = useState(false);
   const [lastResult, setLastResult] = useState<any>(null);
-  const [debugResult, setDebugResult] = useState<any>(null);
   const { toast } = useToast();
-
-  const testDebugFunction = async () => {
-    setTesting(true);
-    setDebugResult(null);
-    
-    try {
-      console.log('🔧 Testando função debug-test...');
-      
-      const response = await supabase.functions.invoke('debug-test', {
-        body: { test: 'debug function call' }
-      });
-      
-      console.log('🔧 Resposta Debug:', response);
-      
-      setDebugResult({
-        success: !response.error,
-        data: response.data,
-        error: response.error,
-        timestamp: new Date().toISOString()
-      });
-      
-      if (response.error) {
-        throw new Error(JSON.stringify(response.error));
-      }
-      
-      toast({
-        title: "✅ Função Debug OK",
-        description: "Função de debug executada com sucesso!",
-      });
-      
-    } catch (error: any) {
-      console.error('❌ Erro na função debug:', error);
-      setDebugResult({
-        success: false,
-        error: error.message,
-        timestamp: new Date().toISOString()
-      });
-      
-      toast({
-        title: "❌ Erro na função debug",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  const testEPGFunction = async () => {
-    await testEPGSimpleFunction();
-  };
-
-  const testEPGSimpleFunction = async () => {
-    setTesting(true);
-    setLastResult(null);
-    
-    try {
-      console.log('🔧 Testando função fetch-epg-simple...');
-      
-      const response = await supabase.functions.invoke('fetch-epg-simple', {
-        body: {}
-      });
-      
-      console.log('🔧 Resposta EPG Simple:', response);
-      
-      if (response.error) {
-        throw new Error(JSON.stringify(response.error));
-      }
-      
-      setLastResult({
-        type: 'EPG',
-        success: true,
-        data: response.data,
-        timestamp: new Date().toISOString()
-      });
-      
-      toast({
-        title: "✅ Teste EPG Simple concluído",
-        description: `EPG processado! ${response.data?.programmes || 0} programas`,
-      });
-      
-    } catch (error: any) {
-      console.error('❌ Erro no teste EPG Simple:', error);
-      setLastResult({
-        type: 'EPG',
-        success: false,
-        error: error.message,
-        timestamp: new Date().toISOString()
-      });
-      
-      toast({
-        title: "❌ Erro no teste EPG Simple",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setTesting(false);
-    }
-  };
-
-
-  const testFunction = async (functionName: string) => {
-    setTesting(true);
-    setLastResult(null);
-    
-    try {
-      console.log(`🔧 Testando função ${functionName}...`);
-      
-      let body = {};
-      if (functionName === 'ingest-m3u-chunk') {
-        body = { fileName: 'test-chunk.jsonl.gz', importUuid: 'test-uuid' };
-      } else if (functionName === 'enrich-tmdb') {
-        body = { batchSize: 5 };
-      }
-      
-      const response = await supabase.functions.invoke(functionName, { body });
-      
-      console.log(`🔧 Resposta ${functionName}:`, response);
-      
-      if (response.error) {
-        throw new Error(JSON.stringify(response.error));
-      }
-      
-      setLastResult({
-        type: functionName.toUpperCase(),
-        success: true,
-        data: response.data,
-        timestamp: new Date().toISOString()
-      });
-      
-      toast({
-        title: `✅ Teste ${functionName} concluído`,
-        description: "Função executada com sucesso!",
-      });
-      
-    } catch (error: any) {
-      console.error(`❌ Erro no teste ${functionName}:`, error);
-      setLastResult({
-        type: functionName.toUpperCase(),
-        success: false,
-        error: error.message,
-        timestamp: new Date().toISOString()
-      });
-      
-      toast({
-        title: `❌ Erro no teste ${functionName}`,
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setTesting(false);
-    }
-  };
 
   const testAllSystems = async () => {
     setTesting(true);
     setLastResult(null);
-    setDebugResult(null);
     
     const results: Array<{name: string, success: boolean, data?: any, error?: string}> = [];
     
     try {
-      // Test 1: Debug
+      console.log('🔧 Iniciando teste completo do sistema...');
+
+      // Test 1: Debug (ping básico)
       console.log('🔧 1/3 Testando Debug...');
       try {
         const debugResponse = await supabase.functions.invoke('debug-test', {
@@ -197,41 +45,79 @@ const EdgeFunctionTester = ({ userId }: EdgeFunctionTesterProps) => {
         });
       }
 
-      // Test 2: EPG
-      console.log('🔧 2/3 Testando EPG...');
+      // Test 2: M3U Import (demo com 100 linhas)
+      console.log('🔧 2/3 Testando Importação M3U...');
       try {
-        const epgResponse = await supabase.functions.invoke('fetch-epg-simple', {
-          body: {}
+        const demoData = {
+          metadata: {
+            generated_at: new Date().toISOString(),
+            total_channels: 3,
+            converter: "M3U to JSON Converter - Demo",
+            version: "1.0"
+          },
+          channels: [
+            {
+              duration: "-1",
+              name: "Test Channel 1",
+              tvg_id: "test1",
+              tvg_name: "Test Channel 1",
+              tvg_logo: "https://via.placeholder.com/150",
+              group_title: "TESTE | DEMO",
+              url: "http://demo.test/stream1.ts"
+            },
+            {
+              duration: "-1",
+              name: "Demo Movie",
+              tvg_id: "demo_movie",
+              tvg_name: "Demo Movie",
+              tvg_logo: "https://via.placeholder.com/300x450",
+              group_title: "FILMES | DEMO",
+              url: "http://demo.test/movie1.mp4"
+            },
+            {
+              duration: "-1",
+              name: "Demo Series S01E01",
+              tvg_id: "demo_series",
+              tvg_name: "Demo Series S01E01",
+              tvg_logo: "https://via.placeholder.com/300x450",
+              group_title: "SÉRIES | DEMO",
+              url: "http://demo.test/series1.mp4"
+            }
+          ]
+        };
+
+        const importResponse = await supabase.functions.invoke('ingest-catalogo', {
+          body: demoData
         });
         results.push({
-          name: 'EPG',
-          success: !epgResponse.error,
-          data: epgResponse.data,
-          error: epgResponse.error?.message
+          name: 'M3U Import',
+          success: !importResponse.error,
+          data: importResponse.data,
+          error: importResponse.error?.message
         });
       } catch (error: any) {
         results.push({
-          name: 'EPG',
+          name: 'M3U Import',
           success: false,
           error: error.message
         });
       }
 
       // Test 3: TMDB Enrich
-      console.log('🔧 3/3 Testando TMDB...');
+      console.log('🔧 3/3 Testando TMDB Enrich...');
       try {
         const tmdbResponse = await supabase.functions.invoke('enrich-tmdb', {
           body: { batchSize: 3 }
         });
         results.push({
-          name: 'TMDB',
+          name: 'TMDB Enrich',
           success: !tmdbResponse.error,
           data: tmdbResponse.data,
           error: tmdbResponse.error?.message
         });
       } catch (error: any) {
         results.push({
-          name: 'TMDB',
+          name: 'TMDB Enrich',
           success: false,
           error: error.message
         });
@@ -242,7 +128,7 @@ const EdgeFunctionTester = ({ userId }: EdgeFunctionTesterProps) => {
       const failCount = results.length - successCount;
 
       setLastResult({
-        type: 'SISTEMA COMPLETO',
+        type: 'TESTE COMPLETO',
         success: failCount === 0,
         data: {
           summary: `${successCount}/${results.length} testes passaram`,
@@ -261,7 +147,7 @@ const EdgeFunctionTester = ({ userId }: EdgeFunctionTesterProps) => {
     } catch (error: any) {
       console.error('❌ Erro no teste completo:', error);
       setLastResult({
-        type: 'SISTEMA COMPLETO',
+        type: 'TESTE COMPLETO',
         success: false,
         error: error.message,
         timestamp: new Date().toISOString()
@@ -282,63 +168,27 @@ const EdgeFunctionTester = ({ userId }: EdgeFunctionTesterProps) => {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Zap className="h-5 w-5" />
-          Teste de Edge Functions
+          Teste Completo do Sistema
         </CardTitle>
         <CardDescription>
-          Teste as Edge Functions para diagnosticar problemas
+          Execute todos os testes de Edge Functions em sequência
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="flex gap-4 flex-wrap">
-          <Button 
-            onClick={testAllSystems}
-            disabled={testing}
-            variant="default"
-            className="flex items-center gap-2"
-          >
-            <Play className="h-4 w-4" />
-            🔧 Testar Tudo
-          </Button>
-          
-          <Button 
-            onClick={() => testFunction('enrich-tmdb')}
-            disabled={testing}
-            variant="outline"
-            className="flex items-center gap-2"
-          >
-            <Play className="h-4 w-4" />
-            🔧 Testar TMDB Enrich
-          </Button>
-        </div>
+        <Button 
+          onClick={testAllSystems}
+          disabled={testing}
+          variant="default"
+          className="w-full flex items-center gap-2"
+        >
+          <Play className="h-4 w-4" />
+          🔧 Testar Tudo
+        </Button>
 
         {testing && (
           <Alert>
             <AlertDescription>
-              Testando Edge Functions... Verifique o console para logs detalhados.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        {debugResult && (
-          <Alert variant={debugResult.success ? "default" : "destructive"}>
-            <AlertDescription>
-              <div className="space-y-2">
-                <div className="font-medium">
-                  🔧 Teste Debug: {debugResult.success ? "✅ Sucesso" : "❌ Erro"}
-                </div>
-                <div className="text-xs opacity-70">
-                  {debugResult.timestamp}
-                </div>
-                {debugResult.success ? (
-                  <pre className="text-xs bg-muted p-2 rounded overflow-auto max-h-32">
-                    {JSON.stringify(debugResult.data, null, 2)}
-                  </pre>
-                ) : (
-                  <div className="text-sm text-destructive-foreground">
-                    {debugResult.error}
-                  </div>
-                )}
-              </div>
+              Executando testes do sistema... Verifique o console para logs detalhados.
             </AlertDescription>
           </Alert>
         )}
@@ -346,17 +196,40 @@ const EdgeFunctionTester = ({ userId }: EdgeFunctionTesterProps) => {
         {lastResult && (
           <Alert variant={lastResult.success ? "default" : "destructive"}>
             <AlertDescription>
-              <div className="space-y-2">
-                <div className="font-medium">
-                  Teste {lastResult.type}: {lastResult.success ? "✅ Sucesso" : "❌ Erro"}
+              <div className="space-y-3">
+                <div className="font-medium text-lg">
+                  {lastResult.type}: {lastResult.success ? "✅ Sucesso" : "❌ Erro"}
                 </div>
                 <div className="text-xs opacity-70">
                   {lastResult.timestamp}
                 </div>
                 {lastResult.success ? (
-                  <pre className="text-xs bg-muted p-2 rounded overflow-auto">
-                    {JSON.stringify(lastResult.data, null, 2)}
-                  </pre>
+                  <div className="space-y-2">
+                    <div className="font-medium text-sm">
+                      {lastResult.data.summary}
+                    </div>
+                    <div className="space-y-1">
+                      {lastResult.data.results.map((result: any, index: number) => (
+                        <div key={index} className="flex items-center gap-2 text-sm">
+                          <span>{result.success ? "✅" : "❌"}</span>
+                          <span className="font-medium">{result.name}</span>
+                          {result.error && (
+                            <span className="text-xs text-muted-foreground">
+                              ({result.error})
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <details className="mt-2">
+                      <summary className="text-xs cursor-pointer hover:underline">
+                        Ver detalhes técnicos
+                      </summary>
+                      <pre className="text-xs bg-muted p-2 rounded mt-1 overflow-auto max-h-40">
+                        {JSON.stringify(lastResult.data, null, 2)}
+                      </pre>
+                    </details>
+                  </div>
                 ) : (
                   <div className="text-sm text-destructive-foreground">
                     {lastResult.error}
@@ -366,6 +239,12 @@ const EdgeFunctionTester = ({ userId }: EdgeFunctionTesterProps) => {
             </AlertDescription>
           </Alert>
         )}
+
+        <div className="text-xs text-muted-foreground space-y-1">
+          <p>• <strong>Debug:</strong> Testa conectividade básica das Edge Functions</p>
+          <p>• <strong>M3U Import:</strong> Simula importação de 3 canais demo</p>
+          <p>• <strong>TMDB Enrich:</strong> Testa busca de metadados para filmes/séries</p>
+        </div>
       </CardContent>
     </Card>
   );

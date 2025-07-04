@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.2';
@@ -83,8 +84,8 @@ serve(async (req) => {
       return 'SD'; // Default
     };
 
-    // Process channels in batches
-    const batchSize = 1000;
+    // Process channels in larger batches for better performance
+    const batchSize = 2000;
     let processedCount = 0;
     
     for (let i = 0; i < data.channels.length; i += batchSize) {
@@ -92,17 +93,20 @@ serve(async (req) => {
       
       const records = batch.map(channel => ({
         import_uuid: importUuid,
-        tvg_id: channel.tvg_id || '',
+        tvg_id: channel.tvg_id || `generated_${i}_${Math.random().toString(36).substr(2, 9)}`,
         nome: channel.name || '',
         grupo: channel.group_title || '',
         logo: channel.tvg_logo || '',
         tipo: determineType(channel.group_title || '', channel.name || ''),
         qualidade: determineQuality(channel.name || '', channel.group_title || ''),
-        url: channel.url || '',
+        // Note: We're not storing the video URL as requested
+        url: '', // Empty URL as we don't want to store video links
         ativo: true
       }));
 
-      // Upsert batch
+      console.log(`Processing batch ${Math.floor(i / batchSize) + 1} with ${records.length} records`);
+
+      // Use upsert with better conflict resolution
       const { error: upsertError } = await supabase
         .from('catalogo_m3u_live')
         .upsert(records, {
@@ -120,6 +124,7 @@ serve(async (req) => {
     }
 
     // Run cleanup after all batches
+    console.log('Running cleanup...');
     const { error: cleanupError } = await supabase
       .rpc('cleanup_m3u', { current_import_uuid: importUuid });
 
@@ -128,26 +133,30 @@ serve(async (req) => {
       // Don't throw here, just log
     }
 
-    // Add items to TMDB pending queue
-    const { error: tmdbError } = await supabase
-      .from('tmdb_pending')
-      .upsert(
-        data.channels
-          .filter(ch => {
-            const type = determineType(ch.group_title || '', ch.name || '');
-            return type === 'filme' || type === 'serie';
-          })
-          .map(ch => ({
-            nome: ch.name || '',
-            tipo: determineType(ch.group_title || '', ch.name || ''),
-            status: 'pending'
-          })),
-        { onConflict: 'nome,tipo', ignoreDuplicates: true }
-      );
+    // Add items to TMDB pending queue for movies and series only
+    const contentForTmdb = data.channels
+      .filter(ch => {
+        const type = determineType(ch.group_title || '', ch.name || '');
+        return type === 'filme' || type === 'serie';
+      })
+      .map(ch => ({
+        nome: ch.name || '',
+        tipo: determineType(ch.group_title || '', ch.name || ''),
+        status: 'pending'
+      }));
 
-    if (tmdbError) {
-      console.error('TMDB queue error:', tmdbError);
-      // Don't throw here, just log
+    if (contentForTmdb.length > 0) {
+      const { error: tmdbError } = await supabase
+        .from('tmdb_pending')
+        .upsert(contentForTmdb, { 
+          onConflict: 'nome,tipo', 
+          ignoreDuplicates: true 
+        });
+
+      if (tmdbError) {
+        console.error('TMDB queue error:', tmdbError);
+        // Don't throw here, just log
+      }
     }
 
     // Log operation
@@ -155,11 +164,12 @@ serve(async (req) => {
       .from('system_logs')
       .insert({
         level: 'info',
-        message: 'Catalog import completed',
+        message: 'Catalog import completed successfully',
         context: {
           import_uuid: importUuid,
           total_channels: data.channels.length,
-          processed: processedCount
+          processed: processedCount,
+          tmdb_queued: contentForTmdb.length
         }
       });
 
@@ -167,7 +177,9 @@ serve(async (req) => {
       success: true,
       import_uuid: importUuid,
       total_channels: data.channels.length,
-      processed: processedCount
+      processed: processedCount,
+      tmdb_queued: contentForTmdb.length,
+      message: 'Import completed successfully'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -177,7 +189,8 @@ serve(async (req) => {
     
     return new Response(JSON.stringify({ 
       error: error.message,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      details: 'Check function logs for more information'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
