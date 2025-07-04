@@ -70,7 +70,7 @@ const Home = () => {
     "HBO MAX", "Apple TV+", "Amazon Prime", "Crunchyroll", "Pluto TV"
   ];
 
-  const appGratuitos = [
+  const appsGratuitos = [
     {
       nome: "Blink Player",
       plataforma: "Android",
@@ -371,7 +371,7 @@ const Home = () => {
           <div className="mb-12">
             <h3 className="text-2xl font-bold text-center mb-8">📱 Aplicativos GRATUITOS</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {appGratuitos.map((app) => (
+              {appsGratuitos.map((app) => (
                 <Card key={app.nome} className="shadow-telebox-card hover:shadow-telebox-hero transition-shadow">
                   <CardHeader className="text-center">
                     <img 
