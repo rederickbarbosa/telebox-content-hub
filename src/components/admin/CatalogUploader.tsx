@@ -1,4 +1,3 @@
-
 import { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, FileVideo, CheckCircle, AlertCircle, Database, Download, Eye, Settings, Copy, Clock } from "lucide-react";
+import { Upload, FileVideo, CheckCircle, AlertCircle, Database, Download, Eye, Settings, Copy, Clock, Server, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -72,6 +71,15 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
+  const addLog = (level: 'info' | 'success' | 'warning' | 'error', message: string) => {
+    const log: UploadLog = {
+      timestamp: new Date().toISOString(),
+      level,
+      message
+    };
+    setUploadLogs(prev => [...prev, log]);
+  };
+
   const updateChunkSize = (newSize: number) => {
     setChunkSize(newSize);
     localStorage.setItem('telebox-chunk-size', newSize.toString());
@@ -101,15 +109,6 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     }
   };
 
-  const addLog = (level: 'info' | 'success' | 'warning' | 'error', message: string) => {
-    const log: UploadLog = {
-      timestamp: new Date().toISOString(),
-      level,
-      message
-    };
-    setUploadLogs(prev => [...prev, log]);
-  };
-
   const calculateETA = (processed: number, total: number, startTime: number) => {
     if (processed === 0) return '';
     const elapsed = Date.now() - startTime;
@@ -119,6 +118,170 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     const etaSeconds = Math.round(etaMs / 1000);
     
     return formatTime(etaSeconds);
+  };
+
+  const uploadToServer = async (file: File) => {
+    addLog('info', `🔄 Mudando para modo servidor devido a falhas no modo local`);
+    addLog('info', `Enviando arquivo ${file.name} para processamento no servidor...`);
+    
+    setUploadMode('server');
+    setProgress(10);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const { data: result, error } = await supabase.functions.invoke('import-m3u-server', {
+        body: formData
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      // Processar logs do servidor
+      if (result.logs && Array.isArray(result.logs)) {
+        result.logs.forEach((logMsg: string) => {
+          // Parse log format: [timestamp] LEVEL: message
+          const logMatch = logMsg.match(/\[([^\]]+)\] (\w+): (.+)/);
+          if (logMatch) {
+            const [, , level, message] = logMatch;
+            addLog(level.toLowerCase() as any, message);
+          } else {
+            addLog('info', logMsg);
+          }
+        });
+      }
+
+      setProgress(100);
+      setEta('Concluído!');
+
+      if (result.success) {
+        addLog('success', `✅ Processamento servidor concluído: ${result.processed}/${result.total} canais`);
+        addLog('success', `Tempo total: ${result.duration}`);
+        
+        if (result.preview_json) {
+          setConvertedData(result.preview_json);
+        }
+        
+        // Calcular estatísticas
+        if (result.stats) {
+          setStats({
+            totalChannels: result.total,
+            totalGroups: Object.keys(result.stats).length,
+            channelsWithLogo: 0, // Não disponível no retorno servidor
+            jsonSize: Math.round(JSON.stringify(result.preview_json).length / 1024)
+          });
+        }
+
+        toast({
+          title: "✅ Importação concluída no servidor!",
+          description: `${result.processed} canais processados com sucesso em ${result.duration}.`,
+        });
+
+        setUploadComplete(true);
+        onUploadComplete();
+      } else {
+        throw new Error(`Falhas no servidor: ${result.failed_chunks} blocos falharam`);
+      }
+
+    } catch (error: any) {
+      addLog('error', `❌ Erro no modo servidor: ${error.message}`);
+      console.error('Erro na importação servidor:', error);
+      toast({
+        title: "Erro na importação servidor",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
+  const uploadInPhases = async (data: ConvertedData) => {
+    const chunks: any[] = [];
+    
+    // Primeiro chunk: objeto completo com metadata
+    const firstChunkChannels = data.channels.slice(0, chunkSize);
+    chunks.push({
+      metadata: data.metadata,
+      channels: firstChunkChannels
+    });
+
+    // Chunks restantes: apenas arrays de canais
+    for (let i = chunkSize; i < data.channels.length; i += chunkSize) {
+      chunks.push(data.channels.slice(i, i + chunkSize));
+    }
+
+    setTotalChunks(chunks.length);
+    addLog('info', `Iniciando upload sequencial em ${chunks.length} blocos (Modo Local)`);
+    
+    let failedChunks = 0;
+
+    // Upload sequencial com fallback
+    for (let i = 0; i < chunks.length; i++) {
+      const isFirstChunk = i === 0;
+      const success = await uploadChunkWithRetry(chunks[i], i, isFirstChunk);
+      
+      if (!success) {
+        failedChunks++;
+        if (failedChunks >= 2) { // Se 2 ou mais chunks falharem, trocar para servidor
+          addLog('warning', '⚠️ Múltiplas falhas detectadas no modo local');
+          addLog('info', '🔄 Ativando fallback para modo servidor...');
+          
+          // Fallback para modo servidor
+          const fileInput = fileInputRef.current;
+          if (fileInput && fileInput.files && fileInput.files[0]) {
+            await uploadToServer(fileInput.files[0]);
+            return;
+          } else {
+            throw new Error('Arquivo não disponível para fallback servidor');
+          }
+        }
+      }
+
+      setCurrentChunk(i + 1);
+      const progressPercent = Math.round(((i + 1) / chunks.length) * 100);
+      setProgress(progressPercent);
+
+      const newEta = calculateETA(i + 1, chunks.length, startTime);
+      setEta(newEta);
+    }
+
+    if (failedChunks === 0) {
+      addLog('success', `✔ Upload local concluído: ${data.channels.length} canais processados em ${chunks.length} blocos`);
+      setUploadComplete(true);
+    }
+  };
+
+  const uploadChunkWithRetry = async (chunkData: any, chunkIndex: number, isFirstChunk: boolean): Promise<boolean> => {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        addLog('info', `Bloco ${chunkIndex + 1}/${totalChunks} - Tentativa ${attempt}${isFirstChunk ? ' (com metadata)' : ''}`);
+
+        const { data: result, error } = await supabase.functions.invoke('ingest-m3u-chunk', {
+          body: chunkData
+        });
+
+        if (error) {
+          throw error;
+        }
+
+        addLog('success', `✓ Bloco ${chunkIndex + 1} processado com sucesso (${result?.processed || 'N/A'} itens)`);
+        return true;
+
+      } catch (error: any) {
+        const delay = Math.pow(2, attempt - 1) * 2000; // 2s, 4s, 8s
+        
+        if (attempt < 3) {
+          addLog('warning', `⚠ Erro no bloco ${chunkIndex + 1}, tentativa ${attempt}: ${error.message}`);
+          addLog('info', `Aguardando ${delay/1000}s antes da próxima tentativa...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          addLog('error', `✖ Falha definitiva no bloco ${chunkIndex + 1} após 3 tentativas: ${error.message}`);
+          return false;
+        }
+      }
+    }
+    return false;
   };
 
   const parseEXTINF = (line: string): Partial<ParsedChannel> => {
@@ -225,6 +388,22 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     URL.revokeObjectURL(url);
   };
 
+  const downloadLogs = () => {
+    const logsText = uploadLogs.map(log => 
+      `[${log.timestamp}] ${log.level.toUpperCase()}: ${log.message}`
+    ).join('\n');
+    
+    const blob = new Blob([logsText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `telebox-upload-log-${new Date().toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const copyLogsToClipboard = () => {
     const logsText = uploadLogs.map(log => 
       `[${log.timestamp}] ${log.level.toUpperCase()}: ${log.message}`
@@ -236,85 +415,6 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         description: "Log completo copiado para a área de transferência",
       });
     });
-  };
-
-  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-  const uploadChunkWithRetry = async (chunkData: any, chunkIndex: number, isFirstChunk: boolean): Promise<boolean> => {
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        addLog('info', `Bloco ${chunkIndex + 1}/${totalChunks} - Tentativa ${attempt}${isFirstChunk ? ' (com metadata)' : ''}`);
-
-        const { data: result, error } = await supabase.functions.invoke('ingest-catalogo', {
-          body: chunkData
-        });
-
-        if (error) {
-          throw error;
-        }
-
-        addLog('success', `✓ Bloco ${chunkIndex + 1} processado com sucesso (${result?.processed || 'N/A'} itens)`);
-        return true;
-
-      } catch (error: any) {
-        const delay = Math.pow(2, attempt - 1) * 2000; // 2s, 4s, 8s
-        
-        if (attempt < 3) {
-          addLog('warning', `⚠ Erro no bloco ${chunkIndex + 1}, tentativa ${attempt}: ${error.message}`);
-          addLog('info', `Aguardando ${delay/1000}s antes da próxima tentativa...`);
-          await sleep(delay);
-        } else {
-          addLog('error', `✖ Falha definitiva no bloco ${chunkIndex + 1} após 3 tentativas: ${error.message}`);
-          return false;
-        }
-      }
-    }
-    return false;
-  };
-
-  const uploadInPhases = async (data: ConvertedData) => {
-    const chunks: any[] = [];
-    
-    // Primeiro chunk: objeto completo com metadata
-    const firstChunkChannels = data.channels.slice(0, chunkSize);
-    chunks.push({
-      metadata: data.metadata,
-      channels: firstChunkChannels
-    });
-
-    // Chunks restantes: apenas arrays de canais
-    for (let i = chunkSize; i < data.channels.length; i += chunkSize) {
-      chunks.push(data.channels.slice(i, i + chunkSize));
-    }
-
-    setTotalChunks(chunks.length);
-    addLog('info', `Iniciando upload sequencial em ${chunks.length} blocos`);
-    addLog('info', `Primeiro bloco: ${firstChunkChannels.length} canais + metadata`);
-    addLog('info', `Blocos restantes: ${chunks.length - 1} x máximo ${chunkSize} canais cada`);
-    setUploadMode('local');
-
-    // Upload sequencial com back-pressure
-    for (let i = 0; i < chunks.length; i++) {
-      const isFirstChunk = i === 0;
-      const success = await uploadChunkWithRetry(chunks[i], i, isFirstChunk);
-      
-      if (!success) {
-        // Fallback para modo servidor (se implementado no futuro)
-        addLog('warning', '⤴ Tentando modo servidor...');
-        setUploadMode('server');
-        throw new Error(`Falha no bloco ${i + 1} após tentativas. Modo servidor não implementado ainda.`);
-      }
-
-      setCurrentChunk(i + 1);
-      const progressPercent = Math.round(((i + 1) / chunks.length) * 100);
-      setProgress(progressPercent);
-
-      const newEta = calculateETA(i + 1, chunks.length, startTime);
-      setEta(newEta);
-    }
-
-    addLog('success', `✔ Upload concluído: ${data.channels.length} canais processados em ${chunks.length} blocos`);
-    setUploadComplete(true);
   };
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -348,6 +448,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     setTotalChunks(0);
     setEta('');
     setElapsedTime('00:00:00');
+    setUploadMode('local');
 
     // Validate file type
     const fileName = file.name.toLowerCase();
@@ -371,7 +472,14 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     try {
       addLog('info', `Iniciando processamento do arquivo: ${file.name} (${Math.round(file.size / 1024)} KB)`);
 
-      // Read file content
+      // Para arquivos muito grandes (>10MB), ir direto para modo servidor
+      if (file.size > 10 * 1024 * 1024) {
+        addLog('info', 'Arquivo grande detectado, usando modo servidor diretamente...');
+        await uploadToServer(file);
+        return;
+      }
+
+      // Read file content (modo local)
       const fileContent = await file.text();
       setProgress(20);
 
@@ -402,19 +510,20 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       setConvertedData(processedData);
       setProgress(70);
 
-      // Upload in phases
+      // Upload in phases with fallback
       await uploadInPhases(processedData);
 
       setProgress(100);
       setEta('Concluído!');
-      addLog('success', '🎉 Processo concluído com sucesso!');
 
-      toast({
-        title: "✅ Importação concluída!",
-        description: `${uploadStats.totalChannels} canais processados com sucesso.`,
-      });
-
-      onUploadComplete();
+      if (uploadComplete) {
+        addLog('success', '🎉 Processo concluído com sucesso!');
+        toast({
+          title: "✅ Importação concluída!",
+          description: `${uploadStats.totalChannels} canais processados com sucesso.`,
+        });
+        onUploadComplete();
+      }
 
     } catch (error: any) {
       addLog('error', `❌ Erro: ${error.message}`);
@@ -464,12 +573,12 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
               <DialogHeader>
                 <DialogTitle>Configurações de Upload</DialogTitle>
                 <DialogDescription>
-                  Ajuste o tamanho dos blocos para otimizar o upload
+                  Ajuste o tamanho dos blocos e modo de processamento
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="chunk-size">Tamanho do Bloco</Label>
+                  <Label htmlFor="chunk-size">Tamanho do Bloco (Modo Local)</Label>
                   <Select value={chunkSize.toString()} onValueChange={(value) => updateChunkSize(parseInt(value))}>
                     <SelectTrigger>
                       <SelectValue />
@@ -484,7 +593,8 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
                     </SelectContent>
                   </Select>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Arquivos grandes: use blocos menores para maior estabilidade
+                    Arquivos grandes: use blocos menores para maior estabilidade.<br/>
+                    Arquivos >10MB usam automaticamente o modo servidor.
                   </p>
                 </div>
               </div>
@@ -529,7 +639,8 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         {progress > 0 && (
           <div className="space-y-3">
             <div className="flex items-center justify-between text-sm">
-              <span>
+              <span className="flex items-center gap-2">
+                {uploadMode === 'server' && <Server className="h-4 w-4" />}
                 {converting ? "Convertendo M3U..." : uploading ? "Enviando dados..." : "Processando..."}
               </span>
               <span>{progress}%</span>
@@ -547,20 +658,32 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
                 </div>
                 <div>
                   <div>Bloco {currentChunk}/{totalChunks}</div>
-                  <div>Modo: {uploadMode === 'local' ? 'Local' : 'Servidor'}</div>
+                  <div className="flex items-center gap-1">
+                    {uploadMode === 'server' ? <Server className="h-3 w-3" /> : <Database className="h-3 w-3" />}
+                    <span>Modo: {uploadMode === 'local' ? 'Local' : 'Servidor'}</span>
+                  </div>
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {uploadComplete && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-            <div className="flex items-center gap-2 text-green-700 mb-2">
-              <CheckCircle className="h-5 w-5" />
-              <span className="font-medium">✔ Catálogo atualizado com sucesso</span>
+        {(uploadComplete || uploadLogs.length > 0) && (
+          <div className={uploadComplete ? "bg-green-50 border border-green-200 rounded-lg p-4" : "bg-yellow-50 border border-yellow-200 rounded-lg p-4"}>
+            <div className="flex items-center gap-2 mb-2">
+              {uploadComplete ? (
+                <>
+                  <CheckCircle className="h-5 w-5 text-green-700" />
+                  <span className="font-medium text-green-700">✔ Catálogo atualizado com sucesso</span>
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="h-5 w-5 text-yellow-700" />
+                  <span className="font-medium text-yellow-700">⚠ Processamento em andamento</span>
+                </>
+              )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {convertedData && (
                 <Button 
                   onClick={downloadJSON} 
@@ -572,6 +695,15 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
                   Baixar JSON gerado
                 </Button>
               )}
+              <Button 
+                onClick={downloadLogs} 
+                size="sm" 
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                Baixar LOG completo
+              </Button>
               <Dialog>
                 <DialogTrigger asChild>
                   <Button variant="link" size="sm" className="h-auto p-0 text-green-600 hover:text-green-700">
@@ -580,23 +712,34 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
                 </DialogTrigger>
                 <DialogContent className="max-w-4xl max-h-[80vh]">
                   <DialogHeader>
-                    <DialogTitle>Log de Upload</DialogTitle>
+                    <DialogTitle>Log de Upload Detalhado</DialogTitle>
                     <DialogDescription>
-                      Detalhes técnicos do processo de importação
+                      Detalhes técnicos completos do processo de importação
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
                     <div className="flex justify-between items-center">
                       <span className="text-sm font-medium">Log completo ({uploadLogs.length} entradas):</span>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={copyLogsToClipboard}
-                        className="flex items-center gap-2"
-                      >
-                        <Copy className="h-4 w-4" />
-                        Copiar log
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={copyLogsToClipboard}
+                          className="flex items-center gap-2"
+                        >
+                          <Copy className="h-4 w-4" />
+                          Copiar log
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={downloadLogs}
+                          className="flex items-center gap-2"
+                        >
+                          <Download className="h-4 w-4" />
+                          Baixar .txt
+                        </Button>
+                      </div>
                     </div>
                     <div className="max-h-[400px] overflow-y-auto bg-slate-900 text-slate-100 p-4 rounded-lg text-xs font-mono">
                       {uploadLogs.map((log, index) => (
@@ -654,10 +797,11 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         )}
 
         <div className="text-xs text-muted-foreground space-y-1">
-          <p>• Primeiro chunk inclui metadata completa, demais chunks são arrays simples</p>
-          <p>• Upload sequencial com retry automático (2s → 6s → 12s)</p>
+          <p>• <strong>Modo Local:</strong> Processa no navegador, ideal para arquivos pequenos (&lt;10MB)</p>
+          <p>• <strong>Modo Servidor:</strong> Processa no Supabase, otimizado para arquivos grandes (&gt;10MB)</p>
+          <p>• <strong>Fallback Automático:</strong> Se o modo local falhar, automaticamente usa o servidor</p>
+          <p>• <strong>Logs Completos:</strong> Disponíveis para download mesmo em caso de erro</p>
           <p>• Drag & drop suportado - arraste arquivos sobre a área</p>
-          <p>• Configure o tamanho dos blocos para otimizar a performance</p>
         </div>
       </CardContent>
     </Card>
