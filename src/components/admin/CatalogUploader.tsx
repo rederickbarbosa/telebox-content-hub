@@ -3,11 +3,10 @@ import { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, FileVideo, CheckCircle, AlertCircle, Database, Download, Eye, Settings, Copy, Clock, Server, AlertTriangle } from "lucide-react";
+import { Upload, FileVideo, CheckCircle, AlertCircle, Database, Download, Eye, Settings, Copy, Clock, Server, AlertTriangle, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -48,16 +47,18 @@ interface UploadLog {
   message: string;
 }
 
+interface BlockUploadResult {
+  success: boolean;
+  processed: number;
+  error?: string;
+}
+
 const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
   const [uploading, setUploading] = useState(false);
   const [converting, setConverting] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [currentChunk, setCurrentChunk] = useState(0);
-  const [totalChunks, setTotalChunks] = useState(0);
-  const [chunkSize, setChunkSize] = useState(() => {
-    const saved = localStorage.getItem('telebox-chunk-size');
-    return saved ? parseInt(saved) : 100;
-  });
+  const [currentBlock, setCurrentBlock] = useState(0);
+  const [totalBlocks, setTotalBlocks] = useState(0);
   const [stats, setStats] = useState<UploadStats | null>(null);
   const [preview, setPreview] = useState<ParsedChannel[]>([]);
   const [convertedData, setConvertedData] = useState<ConvertedData | null>(null);
@@ -67,10 +68,15 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
   const [eta, setEta] = useState('');
   const [startTime, setStartTime] = useState<number>(0);
   const [dragOver, setDragOver] = useState(false);
-  const [uploadMode, setUploadMode] = useState<'local' | 'server'>('local');
+  const [processedChannels, setProcessedChannels] = useState(0);
+  const [totalChannelsToProcess, setTotalChannelsToProcess] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
+
+  // Constantes para divisão de blocos
+  const MAX_BLOCK_SIZE_MB = 40;
+  const MAX_BLOCK_SIZE_BYTES = MAX_BLOCK_SIZE_MB * 1024 * 1024;
 
   const addLog = (level: 'info' | 'success' | 'warning' | 'error', message: string) => {
     const log: UploadLog = {
@@ -79,11 +85,6 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       message
     };
     setUploadLogs(prev => [...prev, log]);
-  };
-
-  const updateChunkSize = (newSize: number) => {
-    setChunkSize(newSize);
-    localStorage.setItem('telebox-chunk-size', newSize.toString());
   };
 
   const formatTime = (seconds: number): string => {
@@ -119,172 +120,6 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     const etaSeconds = Math.round(etaMs / 1000);
     
     return formatTime(etaSeconds);
-  };
-
-  const uploadToServer = async (file: File) => {
-    addLog('info', `🔄 Mudando para modo servidor devido a falhas no modo local`);
-    addLog('info', `Enviando arquivo ${file.name} para processamento no servidor...`);
-    
-    setUploadMode('server');
-    setProgress(10);
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const { data: result, error } = await supabase.functions.invoke('import-m3u-server', {
-        body: formData
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      // Processar logs do servidor
-      if (result.logs && Array.isArray(result.logs)) {
-        result.logs.forEach((logMsg: string) => {
-          // Parse log format: [timestamp] LEVEL: message
-          const logMatch = logMsg.match(/\[([^\]]+)\] (\w+): (.+)/);
-          if (logMatch) {
-            const [, , level, message] = logMatch;
-            addLog(level.toLowerCase() as any, message);
-          } else {
-            addLog('info', logMsg);
-          }
-        });
-      }
-
-      setProgress(100);
-      setEta('Concluído!');
-
-      if (result.success) {
-        addLog('success', `✅ Processamento servidor concluído: ${result.processed}/${result.total} canais`);
-        addLog('success', `Tempo total: ${result.duration}`);
-        
-        if (result.preview_json) {
-          setConvertedData(result.preview_json);
-        }
-        
-        // Calcular estatísticas
-        if (result.stats) {
-          setStats({
-            totalChannels: result.total,
-            totalGroups: Object.keys(result.stats).length,
-            channelsWithLogo: 0, // Não disponível no retorno servidor
-            jsonSize: Math.round(JSON.stringify(result.preview_json).length / 1024)
-          });
-        }
-
-        toast({
-          title: "✅ Importação concluída no servidor!",
-          description: `${result.processed} canais processados com sucesso em ${result.duration}.`,
-        });
-
-        setUploadComplete(true);
-        onUploadComplete();
-      } else {
-        throw new Error(`Falhas no servidor: ${result.failed_chunks} blocos falharam`);
-      }
-
-    } catch (error: any) {
-      addLog('error', `❌ Erro no modo servidor: ${error.message}`);
-      console.error('Erro na importação servidor:', error);
-      toast({
-        title: "Erro na importação servidor",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
-  };
-
-  const uploadInPhases = async (data: ConvertedData) => {
-    const chunks: any[] = [];
-    
-    // Primeiro chunk: objeto completo com metadata
-    const firstChunkChannels = data.channels.slice(0, chunkSize);
-    chunks.push({
-      metadata: data.metadata,
-      channels: firstChunkChannels
-    });
-
-    // Chunks restantes: apenas arrays de canais
-    for (let i = chunkSize; i < data.channels.length; i += chunkSize) {
-      chunks.push(data.channels.slice(i, i + chunkSize));
-    }
-
-    setTotalChunks(chunks.length);
-    addLog('info', `Iniciando upload sequencial em ${chunks.length} blocos`);
-    addLog('info', `Primeiro bloco: ${firstChunkChannels.length} canais + metadata`);
-    addLog('info', `Blocos restantes: ${chunks.length - 1} x máximo ${chunkSize} canais cada`);
-    
-    let failedChunks = 0;
-
-    // Upload sequencial com fallback
-    for (let i = 0; i < chunks.length; i++) {
-      const isFirstChunk = i === 0;
-      const success = await uploadChunkWithRetry(chunks[i], i, isFirstChunk);
-      
-      if (!success) {
-        failedChunks++;
-        if (failedChunks >= 2) { // Se 2 ou mais chunks falharem, trocar para servidor
-          addLog('warning', '⚠️ Múltiplas falhas detectadas no modo local');
-          addLog('info', '🔄 Ativando fallback para modo servidor...');
-          
-          // Fallback para modo servidor
-          const fileInput = fileInputRef.current;
-          if (fileInput && fileInput.files && fileInput.files[0]) {
-            await uploadToServer(fileInput.files[0]);
-            return;
-          } else {
-            throw new Error('Arquivo não disponível para fallback servidor');
-          }
-        }
-      }
-
-      setCurrentChunk(i + 1);
-      const progressPercent = Math.round(((i + 1) / chunks.length) * 100);
-      setProgress(progressPercent);
-
-      const newEta = calculateETA(i + 1, chunks.length, startTime);
-      setEta(newEta);
-    }
-
-    if (failedChunks === 0) {
-      addLog('success', `✔ Upload concluído: ${data.channels.length} canais processados em ${chunks.length} blocos`);
-      setUploadComplete(true);
-    }
-  };
-
-  const uploadChunkWithRetry = async (chunkData: any, chunkIndex: number, isFirstChunk: boolean): Promise<boolean> => {
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        addLog('info', `Bloco ${chunkIndex + 1}/${totalChunks} - Tentativa ${attempt}${isFirstChunk ? ' (com metadata)' : ''}`);
-
-        const { data: result, error } = await supabase.functions.invoke('ingest-m3u-chunk', {
-          body: chunkData
-        });
-
-        if (error) {
-          throw error;
-        }
-
-        addLog('success', `✓ Bloco ${chunkIndex + 1} processado com sucesso (${result?.processed || 'N/A'} itens)`);
-        return true;
-
-      } catch (error: any) {
-        const delay = Math.pow(2, attempt - 1) * 2000; // 2s, 4s, 8s
-        
-        if (attempt < 3) {
-          addLog('warning', `⚠ Erro no bloco ${chunkIndex + 1}, tentativa ${attempt}: ${error.message}`);
-          addLog('info', `Aguardando ${delay/1000}s antes da próxima tentativa...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        } else {
-          addLog('error', `✖ Falha definitiva no bloco ${chunkIndex + 1} após 3 tentativas: ${error.message}`);
-          return false;
-        }
-      }
-    }
-    return false;
   };
 
   const parseEXTINF = (line: string): Partial<ParsedChannel> => {
@@ -355,8 +190,8 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       metadata: {
         generated_at: new Date().toISOString(),
         total_channels: channels.length,
-        converter: "M3U to JSON Converter",
-        version: "1.0"
+        converter: "TELEBOX M3U to JSON Converter",
+        version: "2.0"
       },
       channels
     };
@@ -374,6 +209,174 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       channelsWithLogo,
       jsonSize
     };
+  };
+
+  const clearPreviousCatalog = async (): Promise<boolean> => {
+    try {
+      addLog('info', '🧹 Limpando catálogo anterior...');
+      
+      const { data, error } = await supabase.functions.invoke('clear-catalog');
+      
+      if (error) {
+        addLog('error', `Erro ao limpar catálogo: ${error.message}`);
+        return false;
+      }
+      
+      if (data?.success) {
+        addLog('success', `✅ Catálogo anterior limpo: ${data.deleted_count || 0} registros removidos`);
+        return true;
+      } else {
+        addLog('warning', '⚠️ Falha na limpeza do catálogo anterior');
+        return false;
+      }
+    } catch (error: any) {
+      addLog('error', `Erro crítico na limpeza: ${error.message}`);
+      return false;
+    }
+  };
+
+  const uploadBlock = async (blockData: ParsedChannel[], blockIndex: number, totalBlocks: number): Promise<BlockUploadResult> => {
+    try {
+      addLog('info', `📤 Enviando bloco ${blockIndex + 1}/${totalBlocks} (${blockData.length} canais)`);
+      
+      // Criar JSON do bloco
+      const blockJson = JSON.stringify({
+        metadata: {
+          generated_at: new Date().toISOString(),
+          total_channels: blockData.length,
+          block_index: blockIndex + 1,
+          total_blocks: totalBlocks,
+          converter: "TELEBOX Block Uploader",
+          version: "2.0"
+        },
+        channels: blockData
+      });
+      
+      // Verificar tamanho do bloco
+      const blockSize = new Blob([blockJson]).size;
+      const blockSizeMB = (blockSize / (1024 * 1024)).toFixed(2);
+      
+      if (blockSize > MAX_BLOCK_SIZE_BYTES) {
+        throw new Error(`Bloco ${blockIndex + 1} muito grande: ${blockSizeMB}MB (máx: ${MAX_BLOCK_SIZE_MB}MB)`);
+      }
+      
+      addLog('info', `📊 Tamanho do bloco: ${blockSizeMB}MB`);
+      
+      // Criar FormData
+      const formData = new FormData();
+      const blob = new Blob([blockJson], { type: 'application/json' });
+      formData.append('file', blob, `block_${blockIndex + 1}_of_${totalBlocks}.json`);
+      
+      // Enviar para a Edge Function
+      const { data, error } = await supabase.functions.invoke('import-m3u-server', {
+        body: formData
+      });
+      
+      if (error) {
+        throw error;
+      }
+      
+      if (data?.success) {
+        addLog('success', `✅ Bloco ${blockIndex + 1} enviado com sucesso (${data.processed || blockData.length} canais processados)`);
+        return { success: true, processed: data.processed || blockData.length };
+      } else {
+        throw new Error(data?.error || 'Erro desconhecido no processamento do bloco');
+      }
+      
+    } catch (error: any) {
+      addLog('error', `❌ Falha no bloco ${blockIndex + 1}: ${error.message}`);
+      return { success: false, processed: 0, error: error.message };
+    }
+  };
+
+  const divideIntoBlocks = (channels: ParsedChannel[]): ParsedChannel[][] => {
+    // Calcular tamanho médio por canal
+    const sampleJson = JSON.stringify(channels.slice(0, 100));
+    const avgChannelSize = new Blob([sampleJson]).size / 100;
+    
+    // Calcular quantos canais cabem em um bloco de 40MB
+    const channelsPerBlock = Math.floor(MAX_BLOCK_SIZE_BYTES / avgChannelSize * 0.8); // 80% de segurança
+    
+    addLog('info', `📐 Tamanho médio por canal: ${(avgChannelSize / 1024).toFixed(2)}KB`);
+    addLog('info', `📦 Canais por bloco (seguro): ${channelsPerBlock.toLocaleString()}`);
+    
+    const blocks: ParsedChannel[][] = [];
+    for (let i = 0; i < channels.length; i += channelsPerBlock) {
+      blocks.push(channels.slice(i, i + channelsPerBlock));
+    }
+    
+    return blocks;
+  };
+
+  const uploadSequentially = async (data: ConvertedData) => {
+    const blocks = divideIntoBlocks(data.channels);
+    setTotalBlocks(blocks.length);
+    setTotalChannelsToProcess(data.channels.length);
+    
+    addLog('info', `🔄 Iniciando upload sequencial de ${blocks.length} blocos`);
+    addLog('info', `📊 Total de canais: ${data.channels.length.toLocaleString()}`);
+    
+    let totalProcessed = 0;
+    let failedBlocks = 0;
+    
+    // Limpar catálogo anterior antes do primeiro bloco
+    const clearSuccess = await clearPreviousCatalog();
+    if (!clearSuccess) {
+      addLog('warning', '⚠️ Continuando mesmo com falha na limpeza...');
+    }
+    
+    // Upload sequencial dos blocos
+    for (let i = 0; i < blocks.length; i++) {
+      setCurrentBlock(i + 1);
+      
+      const result = await uploadBlock(blocks[i], i, blocks.length);
+      
+      if (result.success) {
+        totalProcessed += result.processed;
+        setProcessedChannels(totalProcessed);
+      } else {
+        failedBlocks++;
+      }
+      
+      // Atualizar progresso
+      const progressPercent = Math.round(((i + 1) / blocks.length) * 100);
+      setProgress(progressPercent);
+      
+      // Calcular ETA
+      const newEta = calculateETA(i + 1, blocks.length, startTime);
+      setEta(newEta);
+      
+      // Delay entre blocos para evitar sobrecarga
+      if (i < blocks.length - 1) {
+        addLog('info', '⏱️ Aguardando 2s antes do próximo bloco...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+    
+    // Resultado final
+    const successRate = ((blocks.length - failedBlocks) / blocks.length * 100).toFixed(1);
+    
+    if (failedBlocks === 0) {
+      addLog('success', `🎉 Upload concluído com 100% de sucesso!`);
+      addLog('success', `📊 Total processado: ${totalProcessed.toLocaleString()} canais em ${blocks.length} blocos`);
+      setUploadComplete(true);
+      
+      toast({
+        title: "✅ Catálogo atualizado com sucesso!",
+        description: `${totalProcessed.toLocaleString()} canais processados em ${blocks.length} blocos.`,
+      });
+      
+      onUploadComplete();
+    } else {
+      addLog('warning', `⚠️ Upload parcial: ${failedBlocks} de ${blocks.length} blocos falharam`);
+      addLog('info', `📊 Taxa de sucesso: ${successRate}% (${totalProcessed.toLocaleString()} canais processados)`);
+      
+      toast({
+        title: "⚠️ Upload parcial",
+        description: `${totalProcessed.toLocaleString()} canais processados. ${failedBlocks} blocos falharam.`,
+        variant: "destructive",
+      });
+    }
   };
 
   const downloadJSON = () => {
@@ -447,11 +450,12 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     // Reset states
     setUploadLogs([]);
     setUploadComplete(false);
-    setCurrentChunk(0);
-    setTotalChunks(0);
+    setCurrentBlock(0);
+    setTotalBlocks(0);
+    setProcessedChannels(0);
+    setTotalChannelsToProcess(0);
     setEta('');
     setElapsedTime('00:00:00');
-    setUploadMode('local');
 
     // Validate file type
     const fileName = file.name.toLowerCase();
@@ -467,42 +471,47 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       return;
     }
 
+    // Check file size limit (500MB)
+    const maxFileSize = 500 * 1024 * 1024; // 500MB
+    if (file.size > maxFileSize) {
+      toast({
+        title: "Arquivo muito grande",
+        description: "O arquivo deve ter no máximo 500MB.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setUploading(true);
     setConverting(fileName.endsWith('.m3u') || fileName.endsWith('.m3u8'));
     setProgress(0);
     startTimer();
 
     try {
-      addLog('info', `Iniciando processamento do arquivo: ${file.name} (${Math.round(file.size / 1024)} KB)`);
+      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
+      addLog('info', `📁 Processando arquivo: ${file.name} (${fileSizeMB}MB)`);
 
-      // Para arquivos muito grandes (maior que 10MB), ir direto para modo servidor
-      if (file.size > 10 * 1024 * 1024) {
-        addLog('info', 'Arquivo grande detectado, usando modo servidor diretamente...');
-        await uploadToServer(file);
-        return;
-      }
-
-      // Read file content (modo local)
+      // Read file content
       const fileContent = await file.text();
       setProgress(20);
 
       let processedData: ConvertedData;
 
       if (fileName.endsWith('.m3u') || fileName.endsWith('.m3u8')) {
-        addLog('info', 'Convertendo arquivo M3U para JSON...');
+        addLog('info', '🔄 Convertendo M3U para JSON...');
         setProgress(40);
         processedData = convertM3UToJSON(fileContent);
-        addLog('success', `Conversão concluída: ${processedData.channels.length} canais encontrados`);
+        addLog('success', `✅ Conversão concluída: ${processedData.channels.length.toLocaleString()} canais encontrados`);
         setProgress(60);
       } else {
-        addLog('info', 'Validando arquivo JSON...');
+        addLog('info', '✅ Validando arquivo JSON...');
         setProgress(40);
         processedData = JSON.parse(fileContent);
         
         if (!processedData.metadata || !processedData.channels) {
           throw new Error('JSON deve conter "metadata" e "channels"');
         }
-        addLog('success', `JSON válido: ${processedData.channels.length} canais`);
+        addLog('success', `✅ JSON válido: ${processedData.channels.length.toLocaleString()} canais`);
         setProgress(60);
       }
 
@@ -513,20 +522,11 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       setConvertedData(processedData);
       setProgress(70);
 
-      // Upload in phases with fallback
-      await uploadInPhases(processedData);
+      // Upload sequentially with automatic block division
+      await uploadSequentially(processedData);
 
       setProgress(100);
       setEta('Concluído!');
-
-      if (uploadComplete) {
-        addLog('success', '🎉 Processo concluído com sucesso!');
-        toast({
-          title: "✅ Importação concluída!",
-          description: `${uploadStats.totalChannels} canais processados com sucesso.`,
-        });
-        onUploadComplete();
-      }
 
     } catch (error: any) {
       addLog('error', `❌ Erro: ${error.message}`);
@@ -565,47 +565,13 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         <CardTitle className="flex items-center gap-2">
           <Database className="h-5 w-5" />
           Upload de Catálogo M3U/JSON
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button variant="ghost" size="sm" className="ml-auto">
-                <Settings className="h-4 w-4" />
-                Configurar
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Configurações de Upload</DialogTitle>
-                <DialogDescription>
-                  Ajuste o tamanho dos blocos e modo de processamento
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="chunk-size">Tamanho do Bloco (Modo Local)</Label>
-                  <Select value={chunkSize.toString()} onValueChange={(value) => updateChunkSize(parseInt(value))}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="100">100 itens (~50KB)</SelectItem>
-                      <SelectItem value="300">300 itens (~150KB)</SelectItem>
-                      <SelectItem value="500">500 itens (~250KB)</SelectItem>
-                      <SelectItem value="1000">1000 itens (~500KB)</SelectItem>
-                      <SelectItem value="2000">2000 itens (~1MB)</SelectItem>
-                      <SelectItem value="5000">5000 itens (~2.5MB)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Arquivos grandes: use blocos menores para maior estabilidade.<br/>
-                    Arquivos maiores que 10MB usam automaticamente o modo servidor.
-                  </p>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
+          <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
+            <Server className="h-4 w-4" />
+            Divisão automática em blocos ≤ {MAX_BLOCK_SIZE_MB}MB
+          </div>
         </CardTitle>
         <CardDescription>
-          Faça upload de arquivos .m3u, .m3u8 ou .json para atualizar o catálogo
+          Sistema inteligente: divide automaticamente listas grandes em blocos seguros e faz upload sequencial
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -626,7 +592,10 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
               {dragOver ? 'Solte o arquivo aqui' : 'Arraste arquivo aqui ou clique para selecionar'}
             </p>
             <p className="text-xs text-muted-foreground">
-              Formatos aceitos: .m3u, .m3u8, .json
+              Formatos aceitos: .m3u, .m3u8, .json (máx: 500MB)
+            </p>
+            <p className="text-xs text-green-600 font-medium">
+              🚀 Sistema automático: divide em blocos ≤ {MAX_BLOCK_SIZE_MB}MB
             </p>
           </div>
           <Input
@@ -643,14 +612,13 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
           <div className="space-y-3">
             <div className="flex items-center justify-between text-sm">
               <span className="flex items-center gap-2">
-                {uploadMode === 'server' && <Server className="h-4 w-4" />}
-                {converting ? "Convertendo M3U..." : uploading ? "Enviando dados..." : "Processando..."}
+                {converting ? "🔄 Convertendo M3U..." : uploading ? "📤 Enviando blocos..." : "✅ Processando..."}
               </span>
               <span>{progress}%</span>
             </div>
             <Progress value={progress} className="w-full" />
             
-            {totalChunks > 0 && (
+            {totalBlocks > 0 && (
               <div className="grid grid-cols-2 gap-4 text-xs text-muted-foreground">
                 <div>
                   <div className="flex items-center gap-1">
@@ -660,10 +628,10 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
                   {eta && <div>Restante: {eta}</div>}
                 </div>
                 <div>
-                  <div>Bloco {currentChunk}/{totalChunks}</div>
+                  <div>Bloco {currentBlock}/{totalBlocks}</div>
                   <div className="flex items-center gap-1">
-                    {uploadMode === 'server' ? <Server className="h-3 w-3" /> : <Database className="h-3 w-3" />}
-                    <span>Modo: {uploadMode === 'local' ? 'Local' : 'Servidor'}</span>
+                    <Database className="h-3 w-3" />
+                    <span>{processedChannels.toLocaleString()}/{totalChannelsToProcess.toLocaleString()} canais</span>
                   </div>
                 </div>
               </div>
@@ -677,12 +645,12 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
               {uploadComplete ? (
                 <>
                   <CheckCircle className="h-5 w-5 text-green-700" />
-                  <span className="font-medium text-green-700">✔ Catálogo atualizado com sucesso</span>
+                  <span className="font-medium text-green-700">✅ Upload automático concluído com sucesso</span>
                 </>
               ) : (
                 <>
                   <AlertTriangle className="h-5 w-5 text-yellow-700" />
-                  <span className="font-medium text-yellow-700">⚠ Processamento em andamento</span>
+                  <span className="font-medium text-yellow-700">⚠ Upload em processamento...</span>
                 </>
               )}
             </div>
@@ -705,19 +673,19 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
                 className="flex items-center gap-2"
               >
                 <Download className="h-4 w-4" />
-                Baixar LOG completo
+                Exportar LOG (.txt)
               </Button>
               <Dialog>
                 <DialogTrigger asChild>
                   <Button variant="link" size="sm" className="h-auto p-0 text-green-600 hover:text-green-700">
-                    Ver detalhes técnicos
+                    Ver log detalhado
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-4xl max-h-[80vh]">
                   <DialogHeader>
-                    <DialogTitle>Log de Upload Detalhado</DialogTitle>
+                    <DialogTitle>Log de Upload Automático Detalhado</DialogTitle>
                     <DialogDescription>
-                      Detalhes técnicos completos do processo de importação
+                      Detalhes técnicos completos da divisão automática e upload sequencial
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
@@ -800,11 +768,12 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         )}
 
         <div className="text-xs text-muted-foreground space-y-1">
-          <p>• <strong>Modo Local:</strong> Processa no navegador, ideal para arquivos pequenos (menor que 10MB)</p>
-          <p>• <strong>Modo Servidor:</strong> Processa no Supabase, otimizado para arquivos grandes (maior que 10MB)</p>
-          <p>• <strong>Fallback Automático:</strong> Se o modo local falhar, automaticamente usa o servidor</p>
-          <p>• <strong>Logs Completos:</strong> Disponíveis para download mesmo em caso de erro</p>
-          <p>• Drag & drop suportado - arraste arquivos sobre a área</p>
+          <p>• <strong>🤖 Sistema Automático:</strong> Divide listas grandes em blocos de até {MAX_BLOCK_SIZE_MB}MB automaticamente</p>
+          <p>• <strong>📤 Upload Sequencial:</strong> Envia um bloco por vez com delay de 2s entre envios</p>
+          <p>• <strong>🧹 Limpeza Automática:</strong> Remove catálogo anterior antes de inserir o novo</p>
+          <p>• <strong>📊 Logs Sempre Visíveis:</strong> Disponíveis para download mesmo em caso de erro</p>
+          <p>• <strong>🎯 Drag & Drop:</strong> Arraste arquivos sobre a área de upload</p>
+          <p>• <strong>⚡ Escalável:</strong> Preparado para listas de qualquer tamanho</p>
         </div>
       </CardContent>
     </Card>
