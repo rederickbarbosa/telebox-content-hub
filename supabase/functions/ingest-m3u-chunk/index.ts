@@ -1,3 +1,4 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.2';
@@ -22,47 +23,55 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    const { fileName, importUuid } = await req.json();
+    const body = await req.text();
+    const json = JSON.parse(body);
     
-    if (!fileName || !importUuid) {
-      throw new Error('fileName and importUuid are required');
-    }
-
-    console.log('Processing chunk:', fileName, 'for import:', importUuid);
-
-    // Download chunk from storage
-    const { data: fileData, error: downloadError } = await supabase.storage
-      .from('m3u-parts')
-      .download(fileName);
-
-    if (downloadError) {
-      throw new Error(`Failed to download chunk: ${downloadError.message}`);
-    }
-
-    // Decompress and parse JSONL
-    const compressed = new Uint8Array(await fileData.arrayBuffer());
-    const decompressed = new Response(compressed.stream().pipeThrough(new DecompressionStream('gzip')));
-    const text = await decompressed.text();
+    // Generate import UUID if not provided
+    const importUuid = crypto.randomUUID();
     
-    const lines = text.split('\n').filter(line => line.trim());
-    const items = lines.map(line => {
-      try {
-        const parsed = JSON.parse(line);
-        return {
-          tvg_id: parsed.tvg_id || null,
-          nome: parsed.nome || 'Sem nome',
-          grupo: parsed.grupo || null,
-          logo: parsed.logo || null,
-          url: parsed.url,
-          tipo: detectType(parsed),
-          qualidade: extractQuality(parsed.nome || ''),
-          import_uuid: importUuid,
-          ativo: true
-        };
-      } catch (e) {
-        console.error('Failed to parse line:', line, e);
-        return null;
+    let channels: any[] = [];
+    let metadata: any = null;
+
+    // Detect if body is object with metadata or just array of channels
+    if (Array.isArray(json)) {
+      // É só lista de canais (chunks subsequentes)
+      channels = json;
+      console.log(`Processing chunk with ${channels.length} channels (no metadata)`);
+    } else {
+      // Tem metadata + channels (primeiro chunk)
+      channels = json.channels ?? [];
+      metadata = json.metadata;
+      console.log(`Processing first chunk with metadata and ${channels.length} channels`);
+      
+      // Log metadata if present
+      if (metadata) {
+        await supabase
+          .from('system_logs')
+          .insert({
+            level: 'info',
+            message: 'Import started with metadata',
+            context: {
+              importUuid,
+              totalChannels: metadata.total_channels,
+              generatedAt: metadata.generated_at,
+              converter: metadata.converter
+            }
+          });
       }
+    }
+
+    const items = channels.map(channel => {
+      return {
+        tvg_id: channel.tvg_id || channel.id || null,
+        nome: channel.name || channel.nome || 'Sem nome',
+        grupo: channel.group_title || channel.grupo || null,
+        logo: channel.tvg_logo || channel.logo || null,
+        url: channel.url,
+        tipo: detectType(channel),
+        qualidade: extractQuality(channel.name || channel.nome || ''),
+        import_uuid: importUuid,
+        ativo: true
+      };
     }).filter(Boolean);
 
     console.log(`Parsed ${items.length} items from chunk`);
@@ -118,18 +127,19 @@ serve(async (req) => {
         level: 'info',
         message: 'M3U chunk processed successfully',
         context: {
-          fileName,
           importUuid,
           itemsProcessed: insertedCount,
-          enrichmentQueued: enrichItems.length
+          enrichmentQueued: enrichItems.length,
+          hasMetadata: !!metadata
         }
       });
 
     return new Response(JSON.stringify({ 
       success: true,
-      itemsProcessed: insertedCount,
+      processed: insertedCount,
       enrichmentQueued: enrichItems.length,
-      fileName
+      importUuid,
+      hasMetadata: !!metadata
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -148,8 +158,8 @@ serve(async (req) => {
 });
 
 function detectType(item: any): string {
-  const name = (item.nome || '').toLowerCase();
-  const group = (item.grupo || '').toLowerCase();
+  const name = (item.name || item.nome || '').toLowerCase();
+  const group = (item.group_title || item.grupo || '').toLowerCase();
   
   if (group.includes('filme') || group.includes('movie')) return 'filme';
   if (group.includes('serie') || group.includes('tv') || group.includes('show')) return 'serie';

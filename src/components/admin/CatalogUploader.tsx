@@ -240,15 +240,10 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
 
   const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-  const uploadChunkWithRetry = async (chunk: ParsedChannel[], chunkIndex: number): Promise<boolean> => {
-    const chunkData = {
-      metadata: convertedData!.metadata,
-      channels: chunk
-    };
-
+  const uploadChunkWithRetry = async (chunkData: any, chunkIndex: number, isFirstChunk: boolean): Promise<boolean> => {
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
-        addLog('info', `Bloco ${chunkIndex + 1}/${totalChunks} (${chunk.length} itens) - Tentativa ${attempt}`);
+        addLog('info', `Bloco ${chunkIndex + 1}/${totalChunks} - Tentativa ${attempt}${isFirstChunk ? ' (com metadata)' : ''}`);
 
         const { data: result, error } = await supabase.functions.invoke('ingest-catalogo', {
           body: chunkData
@@ -258,11 +253,11 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
           throw error;
         }
 
-        addLog('success', `✓ Bloco ${chunkIndex + 1} enviado com sucesso (${result?.processed || chunk.length} itens)`);
+        addLog('success', `✓ Bloco ${chunkIndex + 1} processado com sucesso (${result?.processed || 'N/A'} itens)`);
         return true;
 
       } catch (error: any) {
-        const delay = Math.pow(2, attempt - 1) * 2000; // 2s, 6s, 12s
+        const delay = Math.pow(2, attempt - 1) * 2000; // 2s, 4s, 8s
         
         if (attempt < 3) {
           addLog('warning', `⚠ Erro no bloco ${chunkIndex + 1}, tentativa ${attempt}: ${error.message}`);
@@ -278,29 +273,36 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
   };
 
   const uploadInPhases = async (data: ConvertedData) => {
-    const chunks: ParsedChannel[][] = [];
+    const chunks: any[] = [];
     
-    // Fase A: Dividir em chunks locais
-    for (let i = 0; i < data.channels.length; i += chunkSize) {
+    // Primeiro chunk: objeto completo com metadata
+    const firstChunkChannels = data.channels.slice(0, chunkSize);
+    chunks.push({
+      metadata: data.metadata,
+      channels: firstChunkChannels
+    });
+
+    // Chunks restantes: apenas arrays de canais
+    for (let i = chunkSize; i < data.channels.length; i += chunkSize) {
       chunks.push(data.channels.slice(i, i + chunkSize));
     }
 
     setTotalChunks(chunks.length);
-    addLog('info', `Iniciando Fase A: Upload local em ${chunks.length} blocos de ${chunkSize} itens cada`);
+    addLog('info', `Iniciando upload sequencial em ${chunks.length} blocos`);
+    addLog('info', `Primeiro bloco: ${firstChunkChannels.length} canais + metadata`);
+    addLog('info', `Blocos restantes: ${chunks.length - 1} x máximo ${chunkSize} canais cada`);
     setUploadMode('local');
 
-    // Fase A: Envio sequencial
+    // Upload sequencial com back-pressure
     for (let i = 0; i < chunks.length; i++) {
-      const success = await uploadChunkWithRetry(chunks[i], i);
+      const isFirstChunk = i === 0;
+      const success = await uploadChunkWithRetry(chunks[i], i, isFirstChunk);
       
       if (!success) {
-        // Fallback para Fase B
-        addLog('warning', '⤴ Mudando para modo servidor...');
+        // Fallback para modo servidor (se implementado no futuro)
+        addLog('warning', '⤴ Tentando modo servidor...');
         setUploadMode('server');
-        
-        // Implementar Fase B aqui se necessário
-        // Por ora, abortar com erro
-        throw new Error('Falha no upload após tentativas locais. Fase servidor não implementada ainda.');
+        throw new Error(`Falha no bloco ${i + 1} após tentativas. Modo servidor não implementado ainda.`);
       }
 
       setCurrentChunk(i + 1);
@@ -311,7 +313,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       setEta(newEta);
     }
 
-    addLog('success', `✔ Upload concluído: ${data.channels.length} itens processados em ${chunks.length} blocos`);
+    addLog('success', `✔ Upload concluído: ${data.channels.length} canais processados em ${chunks.length} blocos`);
     setUploadComplete(true);
   };
 
@@ -441,6 +443,10 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     }
   };
 
+  const handleAreaClick = () => {
+    fileInputRef.current?.click();
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -499,7 +505,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
+          onClick={handleAreaClick}
         >
           <FileVideo className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
           <div className="space-y-2">
@@ -569,7 +575,6 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
               <Dialog>
                 <DialogTrigger asChild>
                   <Button variant="link" size="sm" className="h-auto p-0 text-green-600 hover:text-green-700">
-                    <Eye className="h-3 w-3 mr-1" />
                     Ver detalhes técnicos
                   </Button>
                 </DialogTrigger>
@@ -649,7 +654,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         )}
 
         <div className="text-xs text-muted-foreground space-y-1">
-          <p>• Arquivos M3U serão convertidos automaticamente para JSON</p>
+          <p>• Primeiro chunk inclui metadata completa, demais chunks são arrays simples</p>
           <p>• Upload sequencial com retry automático (2s → 6s → 12s)</p>
           <p>• Drag & drop suportado - arraste arquivos sobre a área</p>
           <p>• Configure o tamanho dos blocos para otimizar a performance</p>
