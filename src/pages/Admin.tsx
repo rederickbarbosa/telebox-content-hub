@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Settings, Upload, Database, Users, Bell } from "lucide-react";
 import M3UUploader from "@/components/admin/M3UUploader";
+import ChunkUploader from "@/components/admin/ChunkUploader";
 import AppManager from "@/components/admin/AppManager";
 import NotificationManager from "@/components/admin/NotificationManager";
 import UserManager from "@/components/admin/UserManager";
@@ -321,6 +322,8 @@ const Admin = () => {
 
           <TabsContent value="catalogo" className="space-y-6">
             <EdgeFunctionTester userId={user.id} />
+            
+            <ChunkUploader onUploadComplete={loadStats} />
             
             <M3UUploader userId={user.id} onUploadComplete={loadStats} />
             

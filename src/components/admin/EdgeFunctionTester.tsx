@@ -119,10 +119,62 @@ const EdgeFunctionTester = ({ userId }: EdgeFunctionTesterProps) => {
     await testM3USimpleFunction();
   };
 
-  const testM3USimpleFunction = async () => {
+  const testFunction = async (functionName: string) => {
     setTesting(true);
     setLastResult(null);
     
+    try {
+      console.log(`🔧 Testando função ${functionName}...`);
+      
+      let body = {};
+      if (functionName === 'ingest-m3u-chunk') {
+        body = { fileName: 'test-chunk.jsonl.gz', importUuid: 'test-uuid' };
+      } else if (functionName === 'enrich-tmdb') {
+        body = { batchSize: 5 };
+      }
+      
+      const response = await supabase.functions.invoke(functionName, { body });
+      
+      console.log(`🔧 Resposta ${functionName}:`, response);
+      
+      if (response.error) {
+        throw new Error(JSON.stringify(response.error));
+      }
+      
+      setLastResult({
+        type: functionName.toUpperCase(),
+        success: true,
+        data: response.data,
+        timestamp: new Date().toISOString()
+      });
+      
+      toast({
+        title: `✅ Teste ${functionName} concluído`,
+        description: "Função executada com sucesso!",
+      });
+      
+    } catch (error: any) {
+      console.error(`❌ Erro no teste ${functionName}:`, error);
+      setLastResult({
+        type: functionName.toUpperCase(),
+        success: false,
+        error: error.message,
+        timestamp: new Date().toISOString()
+      });
+      
+      toast({
+        title: `❌ Erro no teste ${functionName}`,
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const testM3USimpleFunction = async () => {
+    setTesting(true);
+    setLastResult(null);
     
     try {
       console.log('🔧 Testando função process-m3u-simple...');
@@ -218,6 +270,26 @@ http://exemplo.com/filme1.m3u8`;
           >
             <Play className="h-4 w-4" />
             🔧 Testar M3U Simple
+          </Button>
+          
+          <Button 
+            onClick={() => testFunction('ingest-m3u-chunk')}
+            disabled={testing}
+            variant="outline"
+            className="flex items-center gap-2"
+          >
+            <Play className="h-4 w-4" />
+            🔧 Testar Chunk Ingest
+          </Button>
+          
+          <Button 
+            onClick={() => testFunction('enrich-tmdb')}
+            disabled={testing}
+            variant="outline"
+            className="flex items-center gap-2"
+          >
+            <Play className="h-4 w-4" />
+            🔧 Testar TMDB Enrich
           </Button>
         </div>
 

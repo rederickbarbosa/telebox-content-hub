@@ -41,64 +41,29 @@ const Catalogo = () => {
 
   const fetchConteudos = async () => {
     try {
-      // Buscar do catálogo M3U primeiro, depois dos conteúdos enriquecidos
-      const [catalogoResponse, conteudosResponse, settingsResponse] = await Promise.all([
-        supabase.from('catalogo_m3u').select('*').eq('ativo', true),
-        supabase.from('conteudos').select('*').eq('disponivel', true),
-        supabase.from('admin_settings').select('setting_value').eq('setting_key', 'catalog_json_file').single()
+      // Buscar do novo catálogo live primeiro, depois dos conteúdos enriquecidos
+      const [catalogoResponse, conteudosResponse] = await Promise.all([
+        supabase.from('catalogo_m3u_live').select('*').eq('ativo', true),
+        supabase.from('conteudos').select('*').eq('disponivel', true)
       ]);
 
       let allContent = [];
 
-      // Tentar carregar do Storage se disponível
-      if (settingsResponse.data?.setting_value) {
-        try {
-          const { data: storageData } = await supabase.storage
-            .from('catalog-json')
-            .download(settingsResponse.data.setting_value);
-          
-          if (storageData) {
-            const jsonText = await storageData.text();
-            const catalogData = JSON.parse(jsonText);
-            
-            if (catalogData.channels) {
-              const storageContent = catalogData.channels.map((item: any) => ({
-                id: `storage-${Date.now()}-${Math.random()}`,
-                nome: item.nome,
-                tipo: item.tipo,
-                generos: item.grupo ? [item.grupo] : [],
-                ano: null,
-                poster_url: item.tvg_logo || '',
-                backdrop_url: '',
-                descricao: '',
-                classificacao: 0,
-                tmdb_id: 0,
-                trailer_url: '',
-                source: 'storage'
-              }));
-              allContent = [...allContent, ...storageContent];
-            }
-          }
-        } catch (storageError) {
-          console.warn('Erro ao carregar do Storage, usando banco:', storageError);
-        }
-      }
-
-      // Se não conseguiu carregar do Storage, usar dados do banco
-      if (allContent.length === 0 && catalogoResponse.data) {
+      // Usar dados do catálogo live (nova tabela)
+      if (catalogoResponse.data) {
         const catalogoContent = catalogoResponse.data.map(item => ({
           id: item.id,
           nome: item.nome,
           tipo: item.tipo,
           generos: item.grupo ? [item.grupo] : [],
-          ano: null,
-          poster_url: item.tvg_logo || '',
-          backdrop_url: '',
-          descricao: '',
-          classificacao: 0,
-          tmdb_id: 0,
+          ano: item.ano || null,
+          poster_url: item.poster_url || item.logo || '',
+          backdrop_url: item.backdrop_url || '',
+          descricao: item.descricao || '',
+          classificacao: item.classificacao || 0,
+          tmdb_id: item.tmdb_id || 0,
           trailer_url: '',
-          source: 'catalogo_m3u'
+          source: 'catalogo_m3u_live'
         }));
         allContent = [...allContent, ...catalogoContent];
       }

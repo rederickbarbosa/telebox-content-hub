@@ -23,7 +23,7 @@ const Home = () => {
       // Buscar conteúdos em destaque
       const [conteudosResponse, catalogoResponse] = await Promise.all([
         supabase.from('conteudos').select('*').eq('disponivel', true).in('tipo', ['filme', 'serie']).limit(4),
-        supabase.from('catalogo_m3u').select('*').eq('ativo', true).in('tipo', ['filme', 'serie']).limit(4)
+        supabase.from('catalogo_m3u_live').select('*').eq('ativo', true).in('tipo', ['filme', 'serie']).limit(4)
       ]);
 
       let content = [];
@@ -39,12 +39,17 @@ const Home = () => {
           id: item.id,
           nome: item.nome,
           tipo: item.tipo,
-          poster_url: item.tvg_logo,
+          poster_url: item.poster_url || item.logo,
+          backdrop_url: item.backdrop_url,
           generos: item.grupo ? [item.grupo] : [],
-          ano: null,
-          descricao: '',
-          classificacao: 0
+          ano: item.ano || null,
+          descricao: item.descricao || '',
+          classificacao: item.classificacao || 0
         }));
+        // Usar backdrop da primeira entrada se disponível
+        if (content[0]?.backdrop_url) {
+          setBackgroundImage(content[0].backdrop_url);
+        }
       }
 
       // Pegar 2 filmes e 2 séries se possível

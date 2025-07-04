@@ -123,6 +123,51 @@ export type Database = {
         }
         Relationships: []
       }
+      catalogo_m3u_live: {
+        Row: {
+          ativo: boolean | null
+          created_at: string | null
+          grupo: string | null
+          id: string
+          import_uuid: string | null
+          logo: string | null
+          nome: string
+          qualidade: string | null
+          tipo: string | null
+          tvg_id: string | null
+          updated_at: string | null
+          url: string
+        }
+        Insert: {
+          ativo?: boolean | null
+          created_at?: string | null
+          grupo?: string | null
+          id?: string
+          import_uuid?: string | null
+          logo?: string | null
+          nome: string
+          qualidade?: string | null
+          tipo?: string | null
+          tvg_id?: string | null
+          updated_at?: string | null
+          url: string
+        }
+        Update: {
+          ativo?: boolean | null
+          created_at?: string | null
+          grupo?: string | null
+          id?: string
+          import_uuid?: string | null
+          logo?: string | null
+          nome?: string
+          qualidade?: string | null
+          tipo?: string | null
+          tvg_id?: string | null
+          updated_at?: string | null
+          url?: string
+        }
+        Relationships: []
+      }
       conteudos: {
         Row: {
           ano: number | null
@@ -331,6 +376,44 @@ export type Database = {
         }
         Relationships: []
       }
+      tmdb_pending: {
+        Row: {
+          conteudo_id: string | null
+          created_at: string | null
+          id: string
+          nome: string
+          processed_at: string | null
+          status: string | null
+          tipo: string
+        }
+        Insert: {
+          conteudo_id?: string | null
+          created_at?: string | null
+          id?: string
+          nome: string
+          processed_at?: string | null
+          status?: string | null
+          tipo: string
+        }
+        Update: {
+          conteudo_id?: string | null
+          created_at?: string | null
+          id?: string
+          nome?: string
+          processed_at?: string | null
+          status?: string | null
+          tipo?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tmdb_pending_conteudo_id_fkey"
+            columns: ["conteudo_id"]
+            isOneToOne: false
+            referencedRelation: "catalogo_m3u_live"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_content_status: {
         Row: {
           conteudo_id: string
@@ -371,7 +454,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      cleanup_m3u: {
+        Args: { current_import_uuid: string }
+        Returns: undefined
+      }
       create_admin_user: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      prune_catalogo: {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
