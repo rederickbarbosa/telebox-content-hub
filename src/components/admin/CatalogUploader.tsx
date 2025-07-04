@@ -1,4 +1,3 @@
-
 import { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -319,12 +318,6 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     let totalProcessed = 0;
     let failedBlocks = 0;
     
-    // Limpar catálogo anterior antes do primeiro bloco
-    const clearSuccess = await clearPreviousCatalog();
-    if (!clearSuccess) {
-      addLog('warning', '⚠️ Continuando mesmo com falha na limpeza...');
-    }
-    
     // Upload sequencial dos blocos
     for (let i = 0; i < blocks.length; i++) {
       setCurrentBlock(i + 1);
@@ -334,8 +327,10 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       if (result.success) {
         totalProcessed += result.processed;
         setProcessedChannels(totalProcessed);
+        addLog('success', `✅ Bloco ${i + 1} processado: ${result.processed.toLocaleString()} canais`);
       } else {
         failedBlocks++;
+        addLog('error', `❌ Falha no bloco ${i + 1}: ${result.error}`);
       }
       
       // Atualizar progresso
@@ -359,21 +354,23 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     if (failedBlocks === 0) {
       addLog('success', `🎉 Upload concluído com 100% de sucesso!`);
       addLog('success', `📊 Total processado: ${totalProcessed.toLocaleString()} canais em ${blocks.length} blocos`);
+      addLog('info', `🔍 IMPORTANTE: Verifique no Supabase Studio se os dados aparecem na tabela 'catalogo_m3u_live'`);
       setUploadComplete(true);
       
       toast({
         title: "✅ Catálogo atualizado com sucesso!",
-        description: `${totalProcessed.toLocaleString()} canais processados em ${blocks.length} blocos.`,
+        description: `${totalProcessed.toLocaleString()} canais processados. Verifique o Supabase Studio.`,
       });
       
       onUploadComplete();
     } else {
       addLog('warning', `⚠️ Upload parcial: ${failedBlocks} de ${blocks.length} blocos falharam`);
       addLog('info', `📊 Taxa de sucesso: ${successRate}% (${totalProcessed.toLocaleString()} canais processados)`);
+      addLog('error', `🔍 ATENÇÃO: Verifique se os dados estão aparecendo no Supabase Studio na tabela 'catalogo_m3u_live'`);
       
       toast({
         title: "⚠️ Upload parcial",
-        description: `${totalProcessed.toLocaleString()} canais processados. ${failedBlocks} blocos falharam.`,
+        description: `${totalProcessed.toLocaleString()} canais processados. ${failedBlocks} blocos falharam. Verifique o Supabase.`,
         variant: "destructive",
       });
     }
@@ -571,7 +568,11 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
           </div>
         </CardTitle>
         <CardDescription>
-          Sistema inteligente: divide automaticamente listas grandes em blocos seguros e faz upload sequencial
+          Sistema inteligente: divide automaticamente listas grandes em blocos seguros e faz upload sequencial.
+          <br />
+          <span className="text-orange-600 font-medium">
+            🔍 Após o upload, verifique no Supabase Studio se os dados aparecem na tabela 'catalogo_m3u_live'
+          </span>
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -645,7 +646,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
               {uploadComplete ? (
                 <>
                   <CheckCircle className="h-5 w-5 text-green-700" />
-                  <span className="font-medium text-green-700">✅ Upload automático concluído com sucesso</span>
+                  <span className="font-medium text-green-700">✅ Upload automático concluído</span>
                 </>
               ) : (
                 <>
@@ -653,6 +654,14 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
                   <span className="font-medium text-yellow-700">⚠ Upload em processamento...</span>
                 </>
               )}
+            </div>
+            <div className="mb-3 p-3 bg-orange-100 border border-orange-300 rounded text-sm">
+              <div className="font-medium text-orange-800 mb-1">🔍 Verificação obrigatória:</div>
+              <div className="text-orange-700">
+                Acesse o <a href="https://supabase.com/dashboard/project/e1b3b960-0f00-4a70-b646-daeca75b83c0/editor" target="_blank" rel="noopener noreferrer" className="underline font-medium">Supabase Studio</a> e 
+                verifique se os dados aparecem na tabela <code className="bg-white px-1 rounded">catalogo_m3u_live</code>.
+                <br />Se a tabela estiver vazia, há problema nas permissões RLS ou configuração.
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {convertedData && (
@@ -771,8 +780,8 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
           <p>• <strong>🤖 Sistema Automático:</strong> Divide listas grandes em blocos de até {MAX_BLOCK_SIZE_MB}MB automaticamente</p>
           <p>• <strong>📤 Upload Sequencial:</strong> Envia um bloco por vez com delay de 2s entre envios</p>
           <p>• <strong>🧹 Limpeza Automática:</strong> Remove catálogo anterior antes de inserir o novo</p>
+          <p>• <strong>🔍 Verificação Obrigatória:</strong> Sempre confirme no Supabase Studio se os dados foram inseridos</p>
           <p>• <strong>📊 Logs Sempre Visíveis:</strong> Disponíveis para download mesmo em caso de erro</p>
-          <p>• <strong>🎯 Drag & Drop:</strong> Arraste arquivos sobre a área de upload</p>
           <p>• <strong>⚡ Escalável:</strong> Preparado para listas de qualquer tamanho</p>
         </div>
       </CardContent>
