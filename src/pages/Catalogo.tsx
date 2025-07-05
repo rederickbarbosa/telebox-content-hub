@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -5,22 +6,34 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Search, Play, ExternalLink } from "lucide-react";
+import { Search, Play, ExternalLink, Star, Calendar, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface Conteudo {
   id: string;
   nome: string;
   tipo: string;
-  generos: string[];
-  ano: number;
-  poster_url: string;
-  backdrop_url: string;
-  descricao: string;
-  classificacao: number;
-  tmdb_id: number;
-  trailer_url: string;
+  grupo: string;
+  logo: string;
+  qualidade: string;
+  tvg_id: string;
+  ativo: boolean;
+  // Dados TMDB carregados dinamicamente
+  tmdb_data?: {
+    poster_path?: string;
+    backdrop_path?: string;
+    overview?: string;
+    release_date?: string;
+    vote_average?: number;
+    genres?: Array<{id: number, name: string}>;
+    runtime?: number;
+    cast?: Array<{name: string, character: string}>;
+    trailer_key?: string;
+  };
 }
+
+const TMDB_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI0YmU4YmIzNmVlMWVlZmQ1YTAxNjNkOTA4OTU5MzczMSIsIm5iZiI6MTc1MDAyMTg2OS44MjIsInN1YiI6IjY4NGYzNmVkMzI3NDY0N2M0ZDI5NTAxYyIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.GTS74gYaVoWQHAQlz6kBvWYmGL9n6gGethzJHW7qzEA";
 
 const Catalogo = () => {
   const [conteudos, setConteudos] = useState<Conteudo[]>([]);
@@ -28,8 +41,10 @@ const Catalogo = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [tipoFilter, setTipoFilter] = useState("todos");
   const [generoFilter, setGeneroFilter] = useState("todos");
-  const [anoFilter, setAnoFilter] = useState("todos");
+  const [qualidadeFilter, setQualidadeFilter] = useState("todos");
   const [loading, setLoading] = useState(true);
+  const [tmdbLoading, setTmdbLoading] = useState<{[key: string]: boolean}>({});
+  const { toast } = useToast();
 
   useEffect(() => {
     fetchConteudos();
@@ -37,61 +52,33 @@ const Catalogo = () => {
 
   useEffect(() => {
     filterConteudos();
-  }, [conteudos, searchTerm, tipoFilter, generoFilter, anoFilter]);
+  }, [conteudos, searchTerm, tipoFilter, generoFilter, qualidadeFilter]);
 
   const fetchConteudos = async () => {
     try {
-      // Buscar do novo catálogo live primeiro, depois dos conteúdos enriquecidos
-      const [catalogoResponse, conteudosResponse] = await Promise.all([
-        supabase.from('catalogo_m3u_live').select('*').eq('ativo', true),
-        supabase.from('conteudos').select('*').eq('disponivel', true)
-      ]);
+      const { data, error } = await supabase
+        .from('catalogo_m3u_live')
+        .select('*')
+        .eq('ativo', true)
+        .order('nome');
 
-      let allContent = [];
-
-      // Usar dados do catálogo live (nova tabela)
-      if (catalogoResponse.data) {
-        const catalogoContent = catalogoResponse.data.map(item => ({
-          id: item.id,
-          nome: item.nome,
-          tipo: item.tipo,
-          generos: item.grupo ? [item.grupo] : [],
-          ano: item.ano || null,
-          poster_url: item.poster_url || item.logo || '',
-          backdrop_url: item.backdrop_url || '',
-          descricao: item.descricao || '',
-          classificacao: item.classificacao || 0,
-          tmdb_id: item.tmdb_id || 0,
-          trailer_url: '',
-          source: 'catalogo_m3u_live'
-        }));
-        allContent = [...allContent, ...catalogoContent];
+      if (error) {
+        console.error('Erro ao buscar conteúdos:', error);
+        toast({
+          title: "Erro ao carregar catálogo",
+          description: error.message,
+          variant: "destructive",
+        });
+      } else if (data) {
+        setConteudos(data);
       }
-
-      // Processar conteúdos enriquecidos
-      if (conteudosResponse.data) {
-        const enrichedContent = conteudosResponse.data.map(item => ({
-          ...item,
-          source: 'conteudos'
-        }));
-        allContent = [...allContent, ...enrichedContent];
-      }
-
-      // Remover duplicatas baseado no nome e priorizar conteúdos enriquecidos
-      const uniqueContent = allContent.filter((item, index, self) => {
-        const duplicateIndex = self.findIndex(c => 
-          c.nome.toLowerCase() === item.nome.toLowerCase() && c.tipo === item.tipo
-        );
-        // Se é duplicata, manter apenas se for de fonte enriquecida ou se for o primeiro
-        if (duplicateIndex !== index) {
-          return item.source === 'conteudos' && self[duplicateIndex].source !== 'conteudos';
-        }
-        return true;
-      });
-
-      setConteudos(uniqueContent);
     } catch (error) {
       console.error('Erro ao buscar conteúdos:', error);
+      toast({
+        title: "Erro ao carregar catálogo",
+        description: "Verifique sua conexão e tente novamente",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -102,7 +89,8 @@ const Catalogo = () => {
 
     if (searchTerm) {
       filtered = filtered.filter(item =>
-        item.nome.toLowerCase().includes(searchTerm.toLowerCase())
+        item.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.grupo.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -112,18 +100,86 @@ const Catalogo = () => {
 
     if (generoFilter !== "todos") {
       filtered = filtered.filter(item =>
-        item.generos?.includes(generoFilter)
+        item.grupo.toLowerCase().includes(generoFilter.toLowerCase())
       );
     }
 
-    if (anoFilter !== "todos") {
-      filtered = filtered.filter(item => item.ano?.toString() === anoFilter);
+    if (qualidadeFilter !== "todos") {
+      filtered = filtered.filter(item => item.qualidade === qualidadeFilter);
     }
 
     setFilteredConteudos(filtered);
   };
 
-  const redirectToWatch = (conteudo: any) => {
+  const fetchTMDBData = async (conteudo: Conteudo) => {
+    if (conteudo.tmdb_data || tmdbLoading[conteudo.id]) return;
+
+    setTmdbLoading(prev => ({ ...prev, [conteudo.id]: true }));
+
+    try {
+      const searchQuery = encodeURIComponent(conteudo.nome);
+      const mediaType = conteudo.tipo === 'filme' ? 'movie' : 'tv';
+      
+      const searchResponse = await fetch(
+        `https://api.themoviedb.org/3/search/${mediaType}?query=${searchQuery}&language=pt-BR`,
+        {
+          headers: {
+            'Authorization': `Bearer ${TMDB_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      const searchData = await searchResponse.json();
+      
+      if (searchData.results && searchData.results.length > 0) {
+        const tmdbId = searchData.results[0].id;
+        
+        // Buscar detalhes completos
+        const detailsResponse = await fetch(
+          `https://api.themoviedb.org/3/${mediaType}/${tmdbId}?language=pt-BR&append_to_response=credits,videos`,
+          {
+            headers: {
+              'Authorization': `Bearer ${TMDB_TOKEN}`,
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+
+        const detailsData = await detailsResponse.json();
+        
+        // Buscar trailer
+        const trailer = detailsData.videos?.results?.find((video: any) => 
+          video.type === 'Trailer' && video.site === 'YouTube'
+        );
+
+        const tmdbData = {
+          poster_path: detailsData.poster_path,
+          backdrop_path: detailsData.backdrop_path,
+          overview: detailsData.overview,
+          release_date: detailsData.release_date || detailsData.first_air_date,
+          vote_average: detailsData.vote_average,
+          genres: detailsData.genres,
+          runtime: detailsData.runtime || detailsData.episode_run_time?.[0],
+          cast: detailsData.credits?.cast?.slice(0, 5) || [],
+          trailer_key: trailer?.key
+        };
+
+        // Atualizar estado local (não salvar no banco)
+        setConteudos(prev => prev.map(item => 
+          item.id === conteudo.id 
+            ? { ...item, tmdb_data: tmdbData }
+            : item
+        ));
+      }
+    } catch (error) {
+      console.error('Erro ao buscar dados TMDB:', error);
+    } finally {
+      setTmdbLoading(prev => ({ ...prev, [conteudo.id]: false }));
+    }
+  };
+
+  const redirectToWatch = (conteudo: Conteudo) => {
     const baseUrl = "https://web.telebox.com.br/w";
     const type = conteudo.tipo === "filme" ? "movie" : conteudo.tipo === "serie" ? "tv" : "live";
     const url = `${baseUrl}/${type}?search=${encodeURIComponent(conteudo.nome)}`;
@@ -131,13 +187,13 @@ const Catalogo = () => {
   };
 
   const getGenresFromConteudos = () => {
-    const allGenres = conteudos.flatMap(item => item.generos || []);
+    const allGenres = conteudos.map(item => item.grupo).filter(Boolean);
     return [...new Set(allGenres)].sort();
   };
 
-  const getYearsFromConteudos = () => {
-    const years = conteudos.map(item => item.ano).filter(Boolean);
-    return [...new Set(years)].sort((a, b) => b - a);
+  const getQualitiesFromConteudos = () => {
+    const qualities = conteudos.map(item => item.qualidade).filter(Boolean);
+    return [...new Set(qualities)].sort();
   };
 
   if (loading) {
@@ -161,17 +217,17 @@ const Catalogo = () => {
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-4">Catálogo TELEBOX</h1>
           <p className="text-lg text-muted-foreground">
-            Explore mais de {conteudos.length} conteúdos disponíveis
+            Explore mais de {conteudos.length.toLocaleString()} conteúdos disponíveis
           </p>
         </div>
 
         {/* Filtros */}
         <div className="bg-card rounded-lg p-6 mb-8 shadow-telebox-card">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            <div className="relative">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+            <div className="relative lg:col-span-2">
               <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Buscar por nome..."
+                placeholder="Buscar por nome ou grupo..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
@@ -183,7 +239,7 @@ const Catalogo = () => {
                 <SelectValue placeholder="Tipo" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todos">Todos os tipos</SelectItem>
+                <SelectItem value="todos">Todos</SelectItem>
                 <SelectItem value="filme">Filmes</SelectItem>
                 <SelectItem value="serie">Séries</SelectItem>
                 <SelectItem value="canal">Canais</SelectItem>
@@ -195,21 +251,21 @@ const Catalogo = () => {
                 <SelectValue placeholder="Gênero" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todos">Todos os gêneros</SelectItem>
+                <SelectItem value="todos">Todos</SelectItem>
                 {getGenresFromConteudos().map(genre => (
                   <SelectItem key={genre} value={genre}>{genre}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
 
-            <Select value={anoFilter} onValueChange={setAnoFilter}>
+            <Select value={qualidadeFilter} onValueChange={setQualidadeFilter}>
               <SelectTrigger>
-                <SelectValue placeholder="Ano" />
+                <SelectValue placeholder="Qualidade" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="todos">Todos os anos</SelectItem>
-                {getYearsFromConteudos().map(year => (
-                  <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                <SelectItem value="todos">Todas</SelectItem>
+                {getQualitiesFromConteudos().map(quality => (
+                  <SelectItem key={quality} value={quality}>{quality}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -219,11 +275,11 @@ const Catalogo = () => {
                 setSearchTerm("");
                 setTipoFilter("todos");
                 setGeneroFilter("todos");
-                setAnoFilter("todos");
+                setQualidadeFilter("todos");
               }}
               variant="outline"
             >
-              Limpar Filtros
+              Limpar
             </Button>
           </div>
         </div>
@@ -233,22 +289,36 @@ const Catalogo = () => {
           {filteredConteudos.map((conteudo) => (
             <Dialog key={conteudo.id}>
               <DialogTrigger asChild>
-                <Card className="cursor-pointer hover:shadow-telebox-hero transition-shadow group">
+                <Card 
+                  className="cursor-pointer hover:shadow-telebox-hero transition-shadow group"
+                  onClick={() => fetchTMDBData(conteudo)}
+                >
                   <div className="relative overflow-hidden rounded-t-lg">
                     <img
-                      src={conteudo.poster_url || "/placeholder.svg"}
+                      src={
+                        conteudo.tmdb_data?.poster_path 
+                          ? `https://image.tmdb.org/t/p/w500${conteudo.tmdb_data.poster_path}`
+                          : conteudo.logo || "/placeholder.svg"
+                      }
                       alt={conteudo.nome}
                       className="w-full h-64 object-cover group-hover:scale-105 transition-transform"
+                      loading="lazy"
                     />
-                    <div className="absolute top-2 left-2">
-                      <Badge variant="secondary" className="bg-black/70 text-white">
+                    <div className="absolute top-2 left-2 flex flex-col gap-1">
+                      <Badge variant="secondary" className="bg-black/70 text-white text-xs">
                         {conteudo.tipo}
                       </Badge>
+                      {conteudo.qualidade && (
+                        <Badge variant="secondary" className="bg-blue-600 text-white text-xs">
+                          {conteudo.qualidade}
+                        </Badge>
+                      )}
                     </div>
-                    {conteudo.classificacao && (
+                    {conteudo.tmdb_data?.vote_average && (
                       <div className="absolute top-2 right-2">
-                        <Badge variant="secondary" className="bg-yellow-500 text-black">
-                          ⭐ {conteudo.classificacao.toFixed(1)}
+                        <Badge variant="secondary" className="bg-yellow-500 text-black text-xs">
+                          <Star className="h-3 w-3 mr-1" />
+                          {conteudo.tmdb_data.vote_average.toFixed(1)}
                         </Badge>
                       </div>
                     )}
@@ -257,11 +327,14 @@ const Catalogo = () => {
                     <CardTitle className="text-sm font-semibold line-clamp-2">
                       {conteudo.nome}
                     </CardTitle>
-                    {conteudo.ano && (
-                      <CardDescription className="text-xs">
-                        {conteudo.ano}
-                      </CardDescription>
-                    )}
+                    <CardDescription className="text-xs">
+                      {conteudo.grupo}
+                      {conteudo.tmdb_data?.release_date && (
+                        <span className="block">
+                          {new Date(conteudo.tmdb_data.release_date).getFullYear()}
+                        </span>
+                      )}
+                    </CardDescription>
                   </CardHeader>
                 </Card>
               </DialogTrigger>
@@ -274,44 +347,83 @@ const Catalogo = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <img
-                      src={conteudo.poster_url || "/placeholder.svg"}
+                      src={
+                        conteudo.tmdb_data?.poster_path 
+                          ? `https://image.tmdb.org/t/p/w500${conteudo.tmdb_data.poster_path}`
+                          : conteudo.logo || "/placeholder.svg"
+                      }
                       alt={conteudo.nome}
                       className="w-full h-auto rounded-lg shadow-lg"
                     />
                   </div>
                   
                   <div className="space-y-4">
-                    {conteudo.descricao && (
+                    {tmdbLoading[conteudo.id] && (
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-telebox-blue"></div>
+                        <span className="text-sm">Carregando informações...</span>
+                      </div>
+                    )}
+
+                    {conteudo.tmdb_data?.overview && (
                       <div>
                         <h3 className="font-semibold mb-2">Sinopse</h3>
-                        <p className="text-muted-foreground">{conteudo.descricao}</p>
+                        <p className="text-muted-foreground text-sm">{conteudo.tmdb_data.overview}</p>
                       </div>
                     )}
                     
                     <div className="flex flex-wrap gap-2">
                       <Badge variant="outline">{conteudo.tipo}</Badge>
-                      {conteudo.ano && <Badge variant="outline">{conteudo.ano}</Badge>}
-                      {conteudo.classificacao && (
-                        <Badge variant="outline">⭐ {conteudo.classificacao.toFixed(1)}</Badge>
+                      <Badge variant="outline">{conteudo.qualidade}</Badge>
+                      {conteudo.tmdb_data?.vote_average && (
+                        <Badge variant="outline">
+                          <Star className="h-3 w-3 mr-1" />
+                          {conteudo.tmdb_data.vote_average.toFixed(1)}
+                        </Badge>
+                      )}
+                      {conteudo.tmdb_data?.runtime && (
+                        <Badge variant="outline">
+                          <Calendar className="h-3 w-3 mr-1" />
+                          {conteudo.tmdb_data.runtime}min
+                        </Badge>
                       )}
                     </div>
                     
-                    {conteudo.generos && conteudo.generos.length > 0 && (
+                    {conteudo.tmdb_data?.genres && conteudo.tmdb_data.genres.length > 0 && (
                       <div>
                         <h3 className="font-semibold mb-2">Gêneros</h3>
                         <div className="flex flex-wrap gap-2">
-                          {conteudo.generos.map((genero, index) => (
-                            <Badge key={index} variant="secondary">{genero}</Badge>
+                          {conteudo.tmdb_data.genres.map((genero) => (
+                            <Badge key={genero.id} variant="secondary">{genero.name}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {conteudo.tmdb_data?.cast && conteudo.tmdb_data.cast.length > 0 && (
+                      <div>
+                        <h3 className="font-semibold mb-2 flex items-center gap-2">
+                          <Users className="h-4 w-4" />
+                          Elenco Principal
+                        </h3>
+                        <div className="space-y-1">
+                          {conteudo.tmdb_data.cast.map((actor, index) => (
+                            <div key={index} className="text-sm">
+                              <span className="font-medium">{actor.name}</span>
+                              {actor.character && (
+                                <span className="text-muted-foreground"> como {actor.character}</span>
+                              )}
+                            </div>
                           ))}
                         </div>
                       </div>
                     )}
                     
                     <div className="flex flex-col gap-3 pt-4">
-                      {conteudo.trailer_url && (
+                      {conteudo.tmdb_data?.trailer_key && (
                         <Button
                           variant="outline"
-                          onClick={() => window.open(conteudo.trailer_url, '_blank')}
+                          onClick={() => window.open(`https://www.youtube.com/watch?v=${conteudo.tmdb_data?.trailer_key}`, '_blank')}
                           className="w-full"
                         >
                           <Play className="mr-2 h-4 w-4" />
