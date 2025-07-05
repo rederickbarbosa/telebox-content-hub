@@ -1,4 +1,3 @@
-
 import { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,12 +29,22 @@ interface ParsedChannel {
   url: string;
 }
 
+interface ChunkInfo {
+  chunk_number: number;
+  total_chunks: number;
+  channels_in_chunk: number;
+  chunk_start: number;
+  chunk_end: number;
+  split_chunk?: boolean;
+}
+
 interface ConvertedData {
   metadata: {
     generated_at: string;
     total_channels: number;
     converter: string;
     version: string;
+    chunk_info?: ChunkInfo;
   };
   channels: ParsedChannel[];
 }
@@ -211,16 +220,18 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     
     for (let i = 0; i < channels.length; i += channelsPerChunk) {
       const chunkChannels = channels.slice(i, i + channelsPerChunk);
+      const chunkInfo: ChunkInfo = {
+        chunk_number: Math.floor(i / channelsPerChunk) + 1,
+        total_chunks: Math.ceil(channels.length / channelsPerChunk),
+        channels_in_chunk: chunkChannels.length,
+        chunk_start: i,
+        chunk_end: i + chunkChannels.length - 1
+      };
+      
       const chunk: ConvertedData = {
         metadata: {
           ...data.metadata,
-          chunk_info: {
-            chunk_number: Math.floor(i / channelsPerChunk) + 1,
-            total_chunks: Math.ceil(channels.length / channelsPerChunk),
-            channels_in_chunk: chunkChannels.length,
-            chunk_start: i,
-            chunk_end: i + chunkChannels.length - 1
-          }
+          chunk_info: chunkInfo
         },
         channels: chunkChannels
       };
@@ -243,7 +254,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
           metadata: {
             ...chunk.metadata,
             chunk_info: {
-              ...chunk.metadata.chunk_info,
+              ...chunkInfo,
               channels_in_chunk: firstHalf.length,
               split_chunk: true
             }
@@ -257,8 +268,8 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
           metadata: {
             ...chunk.metadata,
             chunk_info: {
-              ...chunk.metadata.chunk_info,
-              chunk_number: chunk.metadata.chunk_info.chunk_number + 0.5,
+              ...chunkInfo,
+              chunk_number: chunkInfo.chunk_number + 0.5,
               channels_in_chunk: secondHalf.length,
               split_chunk: true
             }
@@ -288,7 +299,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       addLog('info', `📤 Enviando parte ${i + 1}/${chunks.length} (${chunkSizeMB}MB, ${chunk.channels.length.toLocaleString()} canais)`);
       
       try {
-        // Criar FormData para este chunk
+        // Criar FormData para este chunk - agora enviando como JSON
         const formData = new FormData();
         const blob = new Blob([chunkJson], { type: 'application/json' });
         formData.append('file', blob, `telebox-catalog-chunk-${i + 1}.json`);
@@ -447,13 +458,13 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
 
     // Validate file type
     const fileName = file.name.toLowerCase();
-    const validExtensions = ['.m3u', '.m3u8', '.json'];
+    const validExtensions = ['.m3u', '.m3u8'];
     const isValidFile = validExtensions.some(ext => fileName.endsWith(ext));
     
     if (!isValidFile) {
       toast({
         title: "Formato inválido",
-        description: "Apenas arquivos .m3u, .m3u8 ou .json são aceitos.",
+        description: "Apenas arquivos .m3u ou .m3u8 são aceitos.",
         variant: "destructive",
       });
       return;
@@ -471,7 +482,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     }
 
     setUploading(true);
-    setConverting(fileName.endsWith('.m3u') || fileName.endsWith('.m3u8'));
+    setConverting(true);
     setProgress(0);
     startTimer();
 
@@ -483,25 +494,11 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       const fileContent = await file.text();
       setProgress(10);
 
-      let processedData: ConvertedData;
-
-      if (fileName.endsWith('.m3u') || fileName.endsWith('.m3u8')) {
-        addLog('info', '🔄 Convertendo M3U para JSON...');
-        setProgress(20);
-        processedData = convertM3UToJSON(fileContent);
-        addLog('success', `✅ Conversão concluída: ${processedData.channels.length.toLocaleString()} canais encontrados`);
-        setProgress(30);
-      } else {
-        addLog('info', '✅ Validando arquivo JSON...');
-        setProgress(20);
-        processedData = JSON.parse(fileContent);
-        
-        if (!processedData.metadata || !processedData.channels) {
-          throw new Error('JSON deve conter "metadata" e "channels"');
-        }
-        addLog('success', `✅ JSON válido: ${processedData.channels.length.toLocaleString()} canais`);
-        setProgress(30);
-      }
+      addLog('info', '🔄 Convertendo M3U para JSON...');
+      setProgress(20);
+      const processedData = convertM3UToJSON(fileContent);
+      addLog('success', `✅ Conversão concluída: ${processedData.channels.length.toLocaleString()} canais encontrados`);
+      setProgress(30);
 
       // Calculate stats and show preview
       const uploadStats = calculateStats(processedData);
@@ -573,7 +570,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Database className="h-5 w-5" />
-          Upload de Catálogo M3U/JSON - Divisão Automática
+          Upload de Catálogo M3U - Divisão Automática
           <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
             <Server className="h-4 w-4" />
             Auto-chunking para arquivos grandes
@@ -605,7 +602,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
               {dragOver ? 'Solte o arquivo aqui' : 'Arraste arquivo aqui ou clique para selecionar'}
             </p>
             <p className="text-xs text-muted-foreground">
-              Formatos aceitos: .m3u, .m3u8, .json (até 1GB - divisão automática)
+              Formatos aceitos: .m3u, .m3u8 (até 1GB - divisão automática)
             </p>
             <p className="text-xs text-green-600 font-medium">
               ✨ Divisão automática: arquivos grandes são divididos em partes de 35MB automaticamente
@@ -614,7 +611,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
           <Input
             ref={fileInputRef}
             type="file"
-            accept=".m3u,.m3u8,.json"
+            accept=".m3u,.m3u8"
             onChange={handleFileUpload}
             disabled={uploading}
             className="hidden"

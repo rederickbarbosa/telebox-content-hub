@@ -23,7 +23,7 @@ serve(async (req) => {
   };
 
   try {
-    addLog('info', '🚀 Iniciando processamento M3U no servidor');
+    addLog('info', '🚀 Iniciando processamento de arquivo no servidor');
     
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -34,7 +34,6 @@ serve(async (req) => {
 
     addLog('info', '✅ Credenciais Supabase configuradas');
     addLog('info', `🔗 URL do projeto: ${supabaseUrl}`);
-    addLog('info', `🔑 Service key presente: ${supabaseServiceKey ? 'SIM' : 'NÃO'}`);
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
@@ -85,53 +84,72 @@ serve(async (req) => {
     
     addLog('info', `✅ Conteúdo lido: ${fileContent.length.toLocaleString()} caracteres`);
     
-    // Parse M3U content
-    addLog('info', '🔄 Iniciando conversão M3U para JSON...');
-    const lines = fileContent.split('\n').map(line => line.trim()).filter(line => line);
-    const channels = [];
-    let currentChannel: any = {};
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      
-      if (line.startsWith('#EXTINF:')) {
-        currentChannel = parseEXTINF(line);
-      } else if (line.startsWith('http') || line.includes('://')) {
-        if (Object.keys(currentChannel).length > 0) {
-          currentChannel.url = line;
-          
-          let tipo = 'canal';
-          if (currentChannel.group_title) {
-            const grupo = currentChannel.group_title.toLowerCase();
-            if (grupo.includes('filme') || grupo.includes('movie')) {
-              tipo = 'filme';
-            } else if (grupo.includes('serie') || grupo.includes('tv') || grupo.includes('show')) {
-              tipo = 'serie';
-            }
-          }
-          
-          let qualidade = 'SD';
-          const nome = currentChannel.name?.toLowerCase() || '';
-          if (nome.includes('4k')) qualidade = '4K';
-          else if (nome.includes('fhd') || nome.includes('fullhd')) qualidade = 'FHD';
-          else if (nome.includes('hd')) qualidade = 'HD';
-
-          channels.push({
-            nome: currentChannel.name || 'Sem nome',
-            tipo,
-            grupo: currentChannel.group_title || 'Sem grupo',
-            logo: currentChannel.tvg_logo || '',
-            qualidade,
-            tvg_id: currentChannel.tvg_id || '',
-            url: currentChannel.url,
+    // DETECÇÃO AUTOMÁTICA: M3U ou JSON
+    const trimmedContent = fileContent.trim();
+    const isJSON = trimmedContent.startsWith('{') || trimmedContent.startsWith('[');
+    const isM3U = trimmedContent.startsWith('#EXTM3U') || trimmedContent.includes('#EXTINF');
+    
+    addLog('info', `🔍 Detecção automática: ${isJSON ? 'JSON' : isM3U ? 'M3U' : 'FORMATO DESCONHECIDO'}`);
+    
+    let channels: any[] = [];
+    
+    if (isJSON) {
+      addLog('info', '🔄 Processando arquivo JSON...');
+      try {
+        const jsonData = JSON.parse(fileContent);
+        
+        // Verificar se tem estrutura esperada
+        if (jsonData.channels && Array.isArray(jsonData.channels)) {
+          channels = jsonData.channels.map((channel: any) => ({
+            nome: channel.name || channel.nome || 'Sem nome',
+            tipo: determineChannelType(channel.group_title || channel.grupo || ''),
+            grupo: channel.group_title || channel.grupo || 'Sem grupo',
+            logo: channel.tvg_logo || channel.logo || '',
+            qualidade: determineQuality(channel.name || channel.nome || ''),
+            tvg_id: channel.tvg_id || '',
+            // NÃO incluir URL no banco conforme solicitado
             ativo: true
-          });
-          currentChannel = {};
+          }));
+          
+          addLog('success', `✅ JSON processado: ${channels.length.toLocaleString()} canais encontrados`);
+        } else {
+          throw new Error('❌ JSON não possui estrutura válida (deve conter array "channels")');
+        }
+      } catch (jsonError: any) {
+        throw new Error(`❌ Erro ao processar JSON: ${jsonError.message}`);
+      }
+    } else if (isM3U) {
+      addLog('info', '🔄 Processando arquivo M3U...');
+      
+      const lines = fileContent.split('\n').map(line => line.trim()).filter(line => line);
+      let currentChannel: any = {};
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        if (line.startsWith('#EXTINF:')) {
+          currentChannel = parseEXTINF(line);
+        } else if (line.startsWith('http') || line.includes('://')) {
+          if (Object.keys(currentChannel).length > 0) {
+            // NÃO incluir URL no banco conforme solicitado
+            channels.push({
+              nome: currentChannel.name || 'Sem nome',
+              tipo: determineChannelType(currentChannel.group_title || ''),
+              grupo: currentChannel.group_title || 'Sem grupo',
+              logo: currentChannel.tvg_logo || '',
+              qualidade: determineQuality(currentChannel.name || ''),
+              tvg_id: currentChannel.tvg_id || '',
+              ativo: true
+            });
+            currentChannel = {};
+          }
         }
       }
+      
+      addLog('success', `✅ M3U processado: ${channels.length.toLocaleString()} canais encontrados`);
+    } else {
+      throw new Error('❌ Formato de arquivo não reconhecido. Deve ser M3U ou JSON válido.');
     }
-
-    addLog('success', `✅ Conversão concluída: ${channels.length.toLocaleString()} canais encontrados`);
     
     if (channels.length === 0) {
       throw new Error('❌ Nenhum canal válido encontrado no arquivo');
@@ -155,33 +173,23 @@ serve(async (req) => {
         addLog('info', `📊 Registros antes da limpeza: ${countBefore || 0}`);
       }
 
-      const { data: deleteData, error: deleteError, count: deletedCount } = await supabase
+      const { error: deleteError } = await supabase
         .from('catalogo_m3u_live')
         .delete()
         .neq('id', '00000000-0000-0000-0000-000000000000');
       
       if (deleteError) {
         addLog('error', `❌ ERRO NA LIMPEZA: ${deleteError.message}`);
-        addLog('error', `❌ Código: ${deleteError.code}, Detalhes: ${deleteError.details}`);
-        // Não vai parar por causa do erro de limpeza, tenta inserir mesmo assim
       } else {
-        addLog('success', `✅ Limpeza concluída: ${deletedCount || 0} registros removidos`);
+        addLog('success', `✅ Limpeza concluída`);
       }
       
-      // Verificar se realmente limpou
-      const { data: countAfter, error: countAfterError } = await supabase
-        .from('catalogo_m3u_live')
-        .select('count(*)', { count: 'exact', head: true });
-      
-      if (!countAfterError) {
-        addLog('info', `📊 Registros após limpeza: ${countAfter || 0}`);
-      }
     } catch (cleanupError: any) {
       addLog('warning', `⚠️ Exceção na limpeza: ${cleanupError.message}`);
     }
 
     // INSERÇÃO EM BLOCOS MENORES COM DIAGNÓSTICO DETALHADO
-    const chunkSize = 5000; // Reduzido para 5k por segurança
+    const chunkSize = 10000; // 10k por segurança
     const totalChunks = Math.ceil(channels.length / chunkSize);
     
     addLog('info', `📦 Iniciando inserção em ${totalChunks} blocos de até ${chunkSize.toLocaleString()} canais cada`);
@@ -196,15 +204,14 @@ serve(async (req) => {
       addLog('info', `📤 Processando bloco ${i + 1}/${totalChunks} (${chunk.length.toLocaleString()} canais)`);
       
       try {
-        // DIAGNÓSTICO 4: Mostrar dados do primeiro canal do bloco
         if (i === 0) {
           addLog('info', `🔍 Primeiro canal do bloco: ${JSON.stringify(chunk[0])}`);
         }
 
-        const { data: insertData, error: insertError, count: insertCount } = await supabase
+        const { data: insertData, error: insertError } = await supabase
           .from('catalogo_m3u_live')
           .insert(chunk)
-          .select('id, nome', { count: 'exact' });
+          .select('id, nome');
 
         if (insertError) {
           addLog('error', `❌ ERRO CRÍTICO NO BLOCO ${i + 1}:`);
@@ -212,10 +219,9 @@ serve(async (req) => {
           addLog('error', `   Código: ${insertError.code || 'N/A'}`);
           addLog('error', `   Detalhes: ${insertError.details || 'N/A'}`);
           addLog('error', `   Hint: ${insertError.hint || 'N/A'}`);
-          addLog('error', `   JSON completo: ${JSON.stringify(insertError)}`);
           failedChunks++;
         } else {
-          const realInserted = insertData?.length || insertCount || chunk.length;
+          const realInserted = insertData?.length || 0;
           actualInsertedCount += realInserted;
           
           addLog('success', `✅ Bloco ${i + 1} inserido com sucesso`);
@@ -232,7 +238,6 @@ serve(async (req) => {
         }
       } catch (error: any) {
         addLog('error', `❌ EXCEÇÃO NO BLOCO ${i + 1}: ${error.message}`);
-        addLog('error', `   Stack: ${error.stack || 'N/A'}`);
         failedChunks++;
       }
       
@@ -245,7 +250,7 @@ serve(async (req) => {
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(2);
     
-    // DIAGNÓSTICO 5: Verificação final OBRIGATÓRIA
+    // DIAGNÓSTICO 4: Verificação final OBRIGATÓRIA
     addLog('info', '🔍 VERIFICAÇÃO FINAL: Contando registros na tabela...');
     try {
       const { data: finalCount, error: finalCountError } = await supabase
@@ -264,9 +269,6 @@ serve(async (req) => {
           addLog('error', '   - Policies restritivas na tabela');
           addLog('error', '   - Service Role Key incorreta');
           addLog('error', '   - Problema de schema/campos incompatíveis');
-          addLog('error', '   - Transação rollback silencioso');
-        } else if ((finalCount || 0) < actualInsertedCount) {
-          addLog('warning', `⚠️ DISCREPÂNCIA: Esperado ${actualInsertedCount}, encontrado ${finalCount}`);
         } else {
           addLog('success', '🎉 INSERÇÃO CONFIRMADA: Dados realmente persistidos!');
         }
@@ -302,28 +304,6 @@ serve(async (req) => {
     addLog('info', `   - Tempo total: ${duration}s`);
     addLog('info', '🔍 IMPORTANTE: Verificar Supabase Studio para confirmar dados!');
     
-    // Gerar estatísticas por grupo
-    const stats: Record<string, number> = {};
-    channels.forEach(channel => {
-      const grupo = channel.grupo || 'Sem grupo';
-      stats[grupo] = (stats[grupo] || 0) + 1;
-    });
-    
-    // Gerar JSON para preview
-    const previewJson = {
-      metadata: {
-        generated_at: new Date().toISOString(),
-        total_channels: channels.length,
-        successful_inserts: successCount,
-        actual_inserted: actualInsertedCount,
-        failed_chunks: failedChunks,
-        processing_time: `${duration}s`,
-        converter: "TELEBOX Diagnostic M3U Converter",
-        version: "4.0"
-      },
-      channels: channels.slice(0, 50)
-    };
-
     return new Response(JSON.stringify({ 
       success: failedChunks === 0,
       processed: successCount,
@@ -332,14 +312,14 @@ serve(async (req) => {
       failed_chunks: failedChunks,
       duration: `${duration}s`,
       logs,
-      preview_json: previewJson,
-      stats,
+      file_type: isJSON ? 'JSON' : 'M3U',
       table_verification: actualInsertedCount > 0 ? 'Dados inseridos com sucesso' : 'ATENÇÃO: Possível problema na inserção - verificar RLS/Policies',
       diagnostic_info: {
         supabase_url: supabaseUrl,
         service_key_present: !!supabaseServiceKey,
         chunks_processed: totalChunks,
-        chunk_size: chunkSize
+        chunk_size: chunkSize,
+        file_format_detected: isJSON ? 'JSON' : isM3U ? 'M3U' : 'UNKNOWN'
       }
     }), {
       status: 200,
@@ -348,7 +328,6 @@ serve(async (req) => {
 
   } catch (error: any) {
     addLog('error', `💥 Erro crítico na importação: ${error.message}`);
-    addLog('error', `💥 Stack completo: ${error.stack || 'N/A'}`);
     console.error('💥 Erro crítico completo:', error);
     
     return new Response(JSON.stringify({ 
@@ -360,11 +339,7 @@ serve(async (req) => {
       failed_chunks: 1,
       duration: '0s',
       timestamp: new Date().toISOString(),
-      debug: 'Erro crítico - verificar logs detalhados',
-      diagnostic_info: {
-        error_type: error.constructor.name,
-        error_stack: error.stack
-      }
+      debug: 'Erro crítico - verificar logs detalhados'
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -389,8 +364,26 @@ function parseEXTINF(line: string) {
   let match;
   while ((match = attributeRegex.exec(line)) !== null) {
     const key = match[1].replace(/-/g, '_');
-    channel[key] = match[2];
+    channel[key] = match[2];  
   }
 
   return channel;
+}
+
+function determineChannelType(grupo: string): string {
+  const grupoLower = grupo.toLowerCase();
+  if (grupoLower.includes('filme') || grupoLower.includes('movie')) {
+    return 'filme';
+  } else if (grupoLower.includes('serie') || grupoLower.includes('tv') || grupoLower.includes('show')) {
+    return 'serie';
+  }
+  return 'canal';
+}
+
+function determineQuality(nome: string): string {
+  const nomeLower = nome.toLowerCase();
+  if (nomeLower.includes('4k')) return '4K';
+  else if (nomeLower.includes('fhd') || nomeLower.includes('fullhd')) return 'FHD';
+  else if (nomeLower.includes('hd')) return 'HD';
+  return 'SD';
 }
