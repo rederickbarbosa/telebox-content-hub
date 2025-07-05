@@ -32,8 +32,28 @@ serve(async (req) => {
       throw new Error('❌ Variáveis de ambiente Supabase não configuradas');
     }
 
-    addLog('info', '✅ Credenciais Supabase OK');
+    addLog('info', '✅ Credenciais Supabase configuradas');
+    addLog('info', `🔗 URL do projeto: ${supabaseUrl}`);
+    addLog('info', `🔑 Service key presente: ${supabaseServiceKey ? 'SIM' : 'NÃO'}`);
+    
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
+    // DIAGNÓSTICO 1: Testar conexão com Supabase
+    addLog('info', '🔍 Testando conexão com Supabase...');
+    try {
+      const { data: testData, error: testError } = await supabase
+        .from('catalogo_m3u_live')
+        .select('count(*)', { count: 'exact', head: true });
+      
+      if (testError) {
+        addLog('error', `❌ ERRO DE CONEXÃO: ${testError.message}`);
+        addLog('error', `❌ Detalhes: ${JSON.stringify(testError)}`);
+      } else {
+        addLog('success', `✅ Conexão OK - Registros existentes: ${testData || 0}`);
+      }
+    } catch (connError: any) {
+      addLog('error', `❌ FALHA NA CONEXÃO: ${connError.message}`);
+    }
     
     // Verificar se é FormData
     const contentType = req.headers.get('content-type') || '';
@@ -52,12 +72,10 @@ serve(async (req) => {
     const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
     addLog('info', `📁 Arquivo recebido: ${file.name} (${fileSizeMB}MB)`);
     
-    // Verificar se o arquivo não é muito grande (limite de 50MB)
     if (file.size > 50 * 1024 * 1024) {
       throw new Error('❌ Arquivo muito grande. Limite máximo: 50MB');
     }
     
-    // Ler conteúdo do arquivo
     addLog('info', '📖 Lendo conteúdo do arquivo...');
     const fileContent = await file.text();
     
@@ -82,7 +100,6 @@ serve(async (req) => {
         if (Object.keys(currentChannel).length > 0) {
           currentChannel.url = line;
           
-          // Determinar tipo baseado no grupo ou nome
           let tipo = 'canal';
           if (currentChannel.group_title) {
             const grupo = currentChannel.group_title.toLowerCase();
@@ -93,7 +110,6 @@ serve(async (req) => {
             }
           }
           
-          // Extrair qualidade do nome
           let qualidade = 'SD';
           const nome = currentChannel.name?.toLowerCase() || '';
           if (nome.includes('4k')) qualidade = '4K';
@@ -117,72 +133,110 @@ serve(async (req) => {
 
     addLog('success', `✅ Conversão concluída: ${channels.length.toLocaleString()} canais encontrados`);
     
-    // Gerar estatísticas por grupo
-    const stats: Record<string, number> = {};
-    channels.forEach(channel => {
-      const grupo = channel.grupo || 'Sem grupo';
-      stats[grupo] = (stats[grupo] || 0) + 1;
-    });
-    
-    addLog('info', `📊 Grupos encontrados: ${Object.keys(stats).length}`);
-    
-    // Limpar catálogo anterior ANTES de inserir
-    addLog('info', '🧹 Limpando catálogo anterior...');
-    try {
-      const { error: deleteError, count } = await supabase
-        .from('catalogo_m3u_live')
-        .delete()
-        .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all except a dummy row
-      
-      if (deleteError && !deleteError.message.includes('no rows')) {
-        addLog('warning', `⚠️ Aviso ao limpar catálogo: ${deleteError.message}`);
-      } else {
-        addLog('success', `✅ Catálogo anterior limpo: ${count || 0} registros removidos`);
-      }
-    } catch (cleanupError: any) {
-      addLog('warning', `⚠️ Erro na limpeza (continuando): ${cleanupError.message}`);
+    if (channels.length === 0) {
+      throw new Error('❌ Nenhum canal válido encontrado no arquivo');
     }
 
-    // Inserir em blocos menores para evitar problemas de quota
-    const chunkSize = 10000; // Reduzido para 10k por bloco
+    // DIAGNÓSTICO 2: Verificar estrutura dos dados antes do insert
+    addLog('info', '🔍 Verificando estrutura dos dados...');
+    const sampleChannel = channels[0];
+    addLog('info', `📋 Exemplo de canal: ${JSON.stringify(sampleChannel, null, 2)}`);
+    
+    // DIAGNÓSTICO 3: Limpar catálogo anterior COM VERIFICAÇÃO
+    addLog('info', '🧹 Limpando catálogo anterior...');
+    try {
+      const { data: countBefore, error: countError } = await supabase
+        .from('catalogo_m3u_live')
+        .select('count(*)', { count: 'exact', head: true });
+      
+      if (countError) {
+        addLog('warning', `⚠️ Erro ao contar registros antes da limpeza: ${countError.message}`);
+      } else {
+        addLog('info', `📊 Registros antes da limpeza: ${countBefore || 0}`);
+      }
+
+      const { data: deleteData, error: deleteError, count: deletedCount } = await supabase
+        .from('catalogo_m3u_live')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000');
+      
+      if (deleteError) {
+        addLog('error', `❌ ERRO NA LIMPEZA: ${deleteError.message}`);
+        addLog('error', `❌ Código: ${deleteError.code}, Detalhes: ${deleteError.details}`);
+        // Não vai parar por causa do erro de limpeza, tenta inserir mesmo assim
+      } else {
+        addLog('success', `✅ Limpeza concluída: ${deletedCount || 0} registros removidos`);
+      }
+      
+      // Verificar se realmente limpou
+      const { data: countAfter, error: countAfterError } = await supabase
+        .from('catalogo_m3u_live')
+        .select('count(*)', { count: 'exact', head: true });
+      
+      if (!countAfterError) {
+        addLog('info', `📊 Registros após limpeza: ${countAfter || 0}`);
+      }
+    } catch (cleanupError: any) {
+      addLog('warning', `⚠️ Exceção na limpeza: ${cleanupError.message}`);
+    }
+
+    // INSERÇÃO EM BLOCOS MENORES COM DIAGNÓSTICO DETALHADO
+    const chunkSize = 5000; // Reduzido para 5k por segurança
     const totalChunks = Math.ceil(channels.length / chunkSize);
     
     addLog('info', `📦 Iniciando inserção em ${totalChunks} blocos de até ${chunkSize.toLocaleString()} canais cada`);
     
     let successCount = 0;
     let failedChunks = 0;
+    let actualInsertedCount = 0;
     
-    // Processar em blocos
     for (let i = 0; i < totalChunks; i++) {
       const chunk = channels.slice(i * chunkSize, (i + 1) * chunkSize);
       
       addLog('info', `📤 Processando bloco ${i + 1}/${totalChunks} (${chunk.length.toLocaleString()} canais)`);
       
       try {
-        const { data, error: insertError } = await supabase
+        // DIAGNÓSTICO 4: Mostrar dados do primeiro canal do bloco
+        if (i === 0) {
+          addLog('info', `🔍 Primeiro canal do bloco: ${JSON.stringify(chunk[0])}`);
+        }
+
+        const { data: insertData, error: insertError, count: insertCount } = await supabase
           .from('catalogo_m3u_live')
           .insert(chunk)
-          .select('id');
+          .select('id, nome', { count: 'exact' });
 
         if (insertError) {
-          addLog('error', `❌ Erro no bloco ${i + 1}: ${insertError.message}`);
-          addLog('error', `❌ Detalhes do erro: ${JSON.stringify(insertError)}`);
+          addLog('error', `❌ ERRO CRÍTICO NO BLOCO ${i + 1}:`);
+          addLog('error', `   Mensagem: ${insertError.message}`);
+          addLog('error', `   Código: ${insertError.code || 'N/A'}`);
+          addLog('error', `   Detalhes: ${insertError.details || 'N/A'}`);
+          addLog('error', `   Hint: ${insertError.hint || 'N/A'}`);
+          addLog('error', `   JSON completo: ${JSON.stringify(insertError)}`);
           failedChunks++;
         } else {
-          const insertedCount = data?.length || chunk.length;
-          addLog('success', `✅ Bloco ${i + 1} inserido com sucesso: ${insertedCount.toLocaleString()} canais`);
-          if (data && data.length > 0) {
-            addLog('info', `🔗 Primeiros IDs inseridos: ${data.slice(0, 3).map(row => row.id).join(', ')}...`);
+          const realInserted = insertData?.length || insertCount || chunk.length;
+          actualInsertedCount += realInserted;
+          
+          addLog('success', `✅ Bloco ${i + 1} inserido com sucesso`);
+          addLog('info', `   📊 Canais no bloco: ${chunk.length}`);
+          addLog('info', `   📊 Realmente inseridos: ${realInserted}`);
+          addLog('info', `   📊 Total acumulado: ${actualInsertedCount}`);
+          
+          if (insertData && insertData.length > 0) {
+            const sampleIds = insertData.slice(0, 3).map(row => `${row.nome} (${row.id.slice(0, 8)}...)`);
+            addLog('info', `   🔗 Exemplos inseridos: ${sampleIds.join(', ')}`);
           }
-          successCount += insertedCount;
+          
+          successCount += realInserted;
         }
       } catch (error: any) {
-        addLog('error', `❌ Exceção no bloco ${i + 1}: ${error.message}`);
-        console.error('Erro detalhado:', error);
+        addLog('error', `❌ EXCEÇÃO NO BLOCO ${i + 1}: ${error.message}`);
+        addLog('error', `   Stack: ${error.stack || 'N/A'}`);
         failedChunks++;
       }
       
-      // Pequeno delay entre blocos para não sobrecarregar
+      // Pequeno delay para não sobrecarregar
       if (i < totalChunks - 1) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
@@ -191,21 +245,48 @@ serve(async (req) => {
     const endTime = Date.now();
     const duration = ((endTime - startTime) / 1000).toFixed(2);
     
-    // Verificar se realmente inseriu no banco
-    addLog('info', '🔍 Verificando dados inseridos no banco...');
+    // DIAGNÓSTICO 5: Verificação final OBRIGATÓRIA
+    addLog('info', '🔍 VERIFICAÇÃO FINAL: Contando registros na tabela...');
     try {
-      const { count, error: countError } = await supabase
+      const { data: finalCount, error: finalCountError } = await supabase
         .from('catalogo_m3u_live')
-        .select('*', { count: 'exact', head: true })
-        .eq('ativo', true);
+        .select('count(*)', { count: 'exact', head: true });
       
-      if (countError) {
-        addLog('warning', `⚠️ Erro ao contar registros: ${countError.message}`);
+      if (finalCountError) {
+        addLog('error', `❌ Erro ao contar registros finais: ${finalCountError.message}`);
       } else {
-        addLog('info', `📊 Total de registros ativos na tabela: ${count?.toLocaleString() || 0}`);
+        addLog('info', `📊 TOTAL DE REGISTROS NA TABELA AGORA: ${finalCount || 0}`);
+        
+        if ((finalCount || 0) === 0) {
+          addLog('error', '🚨 PROBLEMA CRÍTICO: TABELA AINDA VAZIA APÓS INSERÇÃO!');
+          addLog('error', '🔍 Possíveis causas:');
+          addLog('error', '   - RLS (Row Level Security) bloqueando inserts');
+          addLog('error', '   - Policies restritivas na tabela');
+          addLog('error', '   - Service Role Key incorreta');
+          addLog('error', '   - Problema de schema/campos incompatíveis');
+          addLog('error', '   - Transação rollback silencioso');
+        } else if ((finalCount || 0) < actualInsertedCount) {
+          addLog('warning', `⚠️ DISCREPÂNCIA: Esperado ${actualInsertedCount}, encontrado ${finalCount}`);
+        } else {
+          addLog('success', '🎉 INSERÇÃO CONFIRMADA: Dados realmente persistidos!');
+        }
       }
+      
+      // Buscar alguns registros como prova
+      const { data: sampleRecords, error: sampleError } = await supabase
+        .from('catalogo_m3u_live')
+        .select('id, nome, tipo, grupo')
+        .limit(5);
+      
+      if (!sampleError && sampleRecords && sampleRecords.length > 0) {
+        addLog('info', '📋 Amostra dos registros inseridos:');
+        sampleRecords.forEach((record, idx) => {
+          addLog('info', `   ${idx + 1}. ${record.nome} (${record.tipo}) - Grupo: ${record.grupo}`);
+        });
+      }
+      
     } catch (error: any) {
-      addLog('warning', `⚠️ Erro na verificação: ${error.message}`);
+      addLog('error', `❌ Erro na verificação final: ${error.message}`);
     }
     
     // Resultado final
@@ -214,7 +295,19 @@ serve(async (req) => {
       : `⚠️ Importação parcial: ${failedChunks} de ${totalChunks} blocos falharam`;
     
     addLog('info', finalMessage);
-    addLog('info', `📊 Estatísticas finais: ${successCount.toLocaleString()}/${channels.length.toLocaleString()} canais processados em ${duration}s`);
+    addLog('info', `📊 Estatísticas finais:`);
+    addLog('info', `   - Canais processados: ${channels.length.toLocaleString()}`);
+    addLog('info', `   - Inserções reportadas: ${successCount.toLocaleString()}`);
+    addLog('info', `   - Blocos falharam: ${failedChunks}`);
+    addLog('info', `   - Tempo total: ${duration}s`);
+    addLog('info', '🔍 IMPORTANTE: Verificar Supabase Studio para confirmar dados!');
+    
+    // Gerar estatísticas por grupo
+    const stats: Record<string, number> = {};
+    channels.forEach(channel => {
+      const grupo = channel.grupo || 'Sem grupo';
+      stats[grupo] = (stats[grupo] || 0) + 1;
+    });
     
     // Gerar JSON para preview
     const previewJson = {
@@ -222,25 +315,32 @@ serve(async (req) => {
         generated_at: new Date().toISOString(),
         total_channels: channels.length,
         successful_inserts: successCount,
+        actual_inserted: actualInsertedCount,
         failed_chunks: failedChunks,
         processing_time: `${duration}s`,
-        converter: "TELEBOX Server M3U Converter",
-        version: "3.0"
+        converter: "TELEBOX Diagnostic M3U Converter",
+        version: "4.0"
       },
-      channels: channels.slice(0, 50) // Prévia dos primeiros 50
+      channels: channels.slice(0, 50)
     };
 
-    // Retornar sempre status 200 com detalhes completos
     return new Response(JSON.stringify({ 
       success: failedChunks === 0,
       processed: successCount,
+      actual_inserted: actualInsertedCount,
       total: channels.length,
       failed_chunks: failedChunks,
       duration: `${duration}s`,
       logs,
       preview_json: previewJson,
       stats,
-      table_verification: successCount > 0 ? 'Dados inseridos com sucesso' : 'ATENÇÃO: Nenhum dado foi inserido'
+      table_verification: actualInsertedCount > 0 ? 'Dados inseridos com sucesso' : 'ATENÇÃO: Possível problema na inserção - verificar RLS/Policies',
+      diagnostic_info: {
+        supabase_url: supabaseUrl,
+        service_key_present: !!supabaseServiceKey,
+        chunks_processed: totalChunks,
+        chunk_size: chunkSize
+      }
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -248,6 +348,7 @@ serve(async (req) => {
 
   } catch (error: any) {
     addLog('error', `💥 Erro crítico na importação: ${error.message}`);
+    addLog('error', `💥 Stack completo: ${error.stack || 'N/A'}`);
     console.error('💥 Erro crítico completo:', error);
     
     return new Response(JSON.stringify({ 
@@ -259,7 +360,11 @@ serve(async (req) => {
       failed_chunks: 1,
       duration: '0s',
       timestamp: new Date().toISOString(),
-      debug: 'Verifique as configurações do Supabase e permissions da tabela'
+      debug: 'Erro crítico - verificar logs detalhados',
+      diagnostic_info: {
+        error_type: error.constructor.name,
+        error_stack: error.stack
+      }
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -270,19 +375,16 @@ serve(async (req) => {
 function parseEXTINF(line: string) {
   const channel: any = {};
   
-  // Extract duration (usually -1)
   const durationMatch = line.match(/#EXTINF:([^,\s]+)/);
   if (durationMatch) {
     channel.duration = durationMatch[1];
   }
 
-  // Extract channel name (after last comma)
   const nameMatch = line.match(/,([^,]+)$/);
   if (nameMatch) {
     channel.name = nameMatch[1].trim();
   }
 
-  // Extract attributes
   const attributeRegex = /(\w+(?:-\w+)*)="([^"]*)"/g;
   let match;
   while ((match = attributeRegex.exec(line)) !== null) {

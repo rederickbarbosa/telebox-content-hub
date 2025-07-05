@@ -4,8 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Upload, FileVideo, CheckCircle, AlertCircle, Database, Download, Eye, Settings, Copy, Clock, Server, AlertTriangle, Trash2 } from "lucide-react";
+import { Upload, FileVideo, CheckCircle, AlertCircle, Database, Download, Copy, Clock, Server, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -46,34 +45,24 @@ interface UploadLog {
   message: string;
 }
 
-interface BlockUploadResult {
-  success: boolean;
-  processed: number;
-  error?: string;
-}
-
 const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
   const [uploading, setUploading] = useState(false);
   const [converting, setConverting] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [currentBlock, setCurrentBlock] = useState(0);
-  const [totalBlocks, setTotalBlocks] = useState(0);
   const [stats, setStats] = useState<UploadStats | null>(null);
   const [preview, setPreview] = useState<ParsedChannel[]>([]);
   const [convertedData, setConvertedData] = useState<ConvertedData | null>(null);
   const [uploadLogs, setUploadLogs] = useState<UploadLog[]>([]);
   const [uploadComplete, setUploadComplete] = useState(false);
   const [elapsedTime, setElapsedTime] = useState('00:00:00');
-  const [eta, setEta] = useState('');
   const [startTime, setStartTime] = useState<number>(0);
   const [dragOver, setDragOver] = useState(false);
-  const [processedChannels, setProcessedChannels] = useState(0);
-  const [totalChannelsToProcess, setTotalChannelsToProcess] = useState(0);
+  const [diagnosticInfo, setDiagnosticInfo] = useState<any>(null);
+  const [actualInserted, setActualInserted] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
-  // Constantes para divisão de blocos
   const MAX_BLOCK_SIZE_MB = 40;
   const MAX_BLOCK_SIZE_BYTES = MAX_BLOCK_SIZE_MB * 1024 * 1024;
 
@@ -108,17 +97,6 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-  };
-
-  const calculateETA = (processed: number, total: number, startTime: number) => {
-    if (processed === 0) return '';
-    const elapsed = Date.now() - startTime;
-    const rate = processed / elapsed;
-    const remaining = total - processed;
-    const etaMs = remaining / rate;
-    const etaSeconds = Math.round(etaMs / 1000);
-    
-    return formatTime(etaSeconds);
   };
 
   const parseEXTINF = (line: string): Partial<ParsedChannel> => {
@@ -210,64 +188,28 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     };
   };
 
-  const clearPreviousCatalog = async (): Promise<boolean> => {
+  const uploadDirectlyToServer = async (data: ConvertedData) => {
     try {
-      addLog('info', '🧹 Limpando catálogo anterior...');
+      addLog('info', '🚀 Enviando arquivo diretamente para processamento no servidor...');
       
-      const { data, error } = await supabase.functions.invoke('clear-catalog');
+      // Criar JSON completo
+      const fullJson = JSON.stringify(data);
+      const blob = new Blob([fullJson], { type: 'application/json' });
       
-      if (error) {
-        addLog('error', `Erro ao limpar catálogo: ${error.message}`);
-        return false;
+      // Verificar tamanho
+      const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
+      addLog('info', `📊 Tamanho do arquivo: ${sizeMB}MB`);
+      
+      if (blob.size > MAX_BLOCK_SIZE_BYTES) {
+        throw new Error(`Arquivo muito grande: ${sizeMB}MB (máx: ${MAX_BLOCK_SIZE_MB}MB)`);
       }
-      
-      if (data?.success) {
-        addLog('success', `✅ Catálogo anterior limpo: ${data.deleted_count || 0} registros removidos`);
-        return true;
-      } else {
-        addLog('warning', '⚠️ Falha na limpeza do catálogo anterior');
-        return false;
-      }
-    } catch (error: any) {
-      addLog('error', `Erro crítico na limpeza: ${error.message}`);
-      return false;
-    }
-  };
-
-  const uploadBlock = async (blockData: ParsedChannel[], blockIndex: number, totalBlocks: number): Promise<BlockUploadResult> => {
-    try {
-      addLog('info', `📤 Enviando bloco ${blockIndex + 1}/${totalBlocks} (${blockData.length} canais)`);
-      
-      // Criar JSON do bloco
-      const blockJson = JSON.stringify({
-        metadata: {
-          generated_at: new Date().toISOString(),
-          total_channels: blockData.length,
-          block_index: blockIndex + 1,
-          total_blocks: totalBlocks,
-          converter: "TELEBOX Block Uploader",
-          version: "2.0"
-        },
-        channels: blockData
-      });
-      
-      // Verificar tamanho do bloco
-      const blockSize = new Blob([blockJson]).size;
-      const blockSizeMB = (blockSize / (1024 * 1024)).toFixed(2);
-      
-      if (blockSize > MAX_BLOCK_SIZE_BYTES) {
-        throw new Error(`Bloco ${blockIndex + 1} muito grande: ${blockSizeMB}MB (máx: ${MAX_BLOCK_SIZE_MB}MB)`);
-      }
-      
-      addLog('info', `📊 Tamanho do bloco: ${blockSizeMB}MB`);
       
       // Criar FormData
       const formData = new FormData();
-      const blob = new Blob([blockJson], { type: 'application/json' });
-      formData.append('file', blob, `block_${blockIndex + 1}_of_${totalBlocks}.json`);
+      formData.append('file', blob, `telebox-catalog-${new Date().toISOString().split('T')[0]}.json`);
       
-      // Enviar para a Edge Function
-      const { data, error } = await supabase.functions.invoke('import-m3u-server', {
+      // Enviar para Edge Function
+      const { data: result, error } = await supabase.functions.invoke('import-m3u-server', {
         body: formData
       });
       
@@ -275,102 +217,64 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         throw error;
       }
       
-      if (data?.success) {
-        addLog('success', `✅ Bloco ${blockIndex + 1} enviado com sucesso (${data.processed || blockData.length} canais processados)`);
-        return { success: true, processed: data.processed || blockData.length };
-      } else {
-        throw new Error(data?.error || 'Erro desconhecido no processamento do bloco');
+      // Processar resposta
+      if (result) {
+        // Adicionar logs do servidor ao log local
+        if (result.logs && Array.isArray(result.logs)) {
+          result.logs.forEach((logMsg: string) => {
+            // Extrair nível e mensagem do log
+            const match = logMsg.match(/\[(.*?)\] (\w+): (.*)/);
+            if (match) {
+              const [, , level, message] = match;
+              addLog(level.toLowerCase() as any, message);
+            } else {
+              addLog('info', logMsg);
+            }
+          });
+        }
+        
+        // Armazenar informações de diagnóstico
+        if (result.diagnostic_info) {
+          setDiagnosticInfo(result.diagnostic_info);
+        }
+        
+        if (result.actual_inserted !== undefined) {
+          setActualInserted(result.actual_inserted);
+        }
+        
+        if (result.success) {
+          addLog('success', `🎉 Upload concluído! ${result.processed || 0} canais processados`);
+          setUploadComplete(true);
+          
+          toast({
+            title: "✅ Catálogo enviado com sucesso!",
+            description: `${result.processed || 0} canais processados pelo servidor`,
+          });
+          
+          onUploadComplete();
+          
+          // Verificação crítica
+          if ((result.actual_inserted || 0) === 0) {
+            addLog('error', '🚨 ATENÇÃO: Nenhum dado foi realmente inserido na tabela!');
+            addLog('error', '🔍 Possíveis causas: RLS ativo, policies restritivas ou problema de permissões');
+            
+            toast({
+              title: "⚠️ Problema detectado!",
+              description: "Upload processado mas dados não inseridos. Verificar RLS/Policies no Supabase.",
+              variant: "destructive",
+            });
+          }
+        } else {
+          throw new Error(result.error || 'Erro desconhecido no servidor');
+        }
       }
-      
     } catch (error: any) {
-      addLog('error', `❌ Falha no bloco ${blockIndex + 1}: ${error.message}`);
-      return { success: false, processed: 0, error: error.message };
-    }
-  };
-
-  const divideIntoBlocks = (channels: ParsedChannel[]): ParsedChannel[][] => {
-    // Calcular tamanho médio por canal
-    const sampleJson = JSON.stringify(channels.slice(0, 100));
-    const avgChannelSize = new Blob([sampleJson]).size / 100;
-    
-    // Calcular quantos canais cabem em um bloco de 40MB
-    const channelsPerBlock = Math.floor(MAX_BLOCK_SIZE_BYTES / avgChannelSize * 0.8); // 80% de segurança
-    
-    addLog('info', `📐 Tamanho médio por canal: ${(avgChannelSize / 1024).toFixed(2)}KB`);
-    addLog('info', `📦 Canais por bloco (seguro): ${channelsPerBlock.toLocaleString()}`);
-    
-    const blocks: ParsedChannel[][] = [];
-    for (let i = 0; i < channels.length; i += channelsPerBlock) {
-      blocks.push(channels.slice(i, i + channelsPerBlock));
-    }
-    
-    return blocks;
-  };
-
-  const uploadSequentially = async (data: ConvertedData) => {
-    const blocks = divideIntoBlocks(data.channels);
-    setTotalBlocks(blocks.length);
-    setTotalChannelsToProcess(data.channels.length);
-    
-    addLog('info', `🔄 Iniciando upload sequencial de ${blocks.length} blocos`);
-    addLog('info', `📊 Total de canais: ${data.channels.length.toLocaleString()}`);
-    
-    let totalProcessed = 0;
-    let failedBlocks = 0;
-    
-    // Upload sequencial dos blocos
-    for (let i = 0; i < blocks.length; i++) {
-      setCurrentBlock(i + 1);
-      
-      const result = await uploadBlock(blocks[i], i, blocks.length);
-      
-      if (result.success) {
-        totalProcessed += result.processed;
-        setProcessedChannels(totalProcessed);
-        addLog('success', `✅ Bloco ${i + 1} processado: ${result.processed.toLocaleString()} canais`);
-      } else {
-        failedBlocks++;
-        addLog('error', `❌ Falha no bloco ${i + 1}: ${result.error}`);
-      }
-      
-      // Atualizar progresso
-      const progressPercent = Math.round(((i + 1) / blocks.length) * 100);
-      setProgress(progressPercent);
-      
-      // Calcular ETA
-      const newEta = calculateETA(i + 1, blocks.length, startTime);
-      setEta(newEta);
-      
-      // Delay entre blocos para evitar sobrecarga
-      if (i < blocks.length - 1) {
-        addLog('info', '⏱️ Aguardando 2s antes do próximo bloco...');
-        await new Promise(resolve => setTimeout(resolve, 2000));
-      }
-    }
-    
-    // Resultado final
-    const successRate = ((blocks.length - failedBlocks) / blocks.length * 100).toFixed(1);
-    
-    if (failedBlocks === 0) {
-      addLog('success', `🎉 Upload concluído com 100% de sucesso!`);
-      addLog('success', `📊 Total processado: ${totalProcessed.toLocaleString()} canais em ${blocks.length} blocos`);
-      addLog('info', `🔍 IMPORTANTE: Verifique no Supabase Studio se os dados aparecem na tabela 'catalogo_m3u_live'`);
-      setUploadComplete(true);
+      addLog('error', `❌ Erro no servidor: ${error.message}`);
+      console.error('Erro no upload:', error);
       
       toast({
-        title: "✅ Catálogo atualizado com sucesso!",
-        description: `${totalProcessed.toLocaleString()} canais processados. Verifique o Supabase Studio.`,
-      });
-      
-      onUploadComplete();
-    } else {
-      addLog('warning', `⚠️ Upload parcial: ${failedBlocks} de ${blocks.length} blocos falharam`);
-      addLog('info', `📊 Taxa de sucesso: ${successRate}% (${totalProcessed.toLocaleString()} canais processados)`);
-      addLog('error', `🔍 ATENÇÃO: Verifique se os dados estão aparecendo no Supabase Studio na tabela 'catalogo_m3u_live'`);
-      
-      toast({
-        title: "⚠️ Upload parcial",
-        description: `${totalProcessed.toLocaleString()} canais processados. ${failedBlocks} blocos falharam. Verifique o Supabase.`,
+        title: "Erro no upload",
+        description: error.message,
         variant: "destructive",
       });
     }
@@ -447,12 +351,9 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     // Reset states
     setUploadLogs([]);
     setUploadComplete(false);
-    setCurrentBlock(0);
-    setTotalBlocks(0);
-    setProcessedChannels(0);
-    setTotalChannelsToProcess(0);
-    setEta('');
     setElapsedTime('00:00:00');
+    setDiagnosticInfo(null);
+    setActualInserted(0);
 
     // Validate file type
     const fileName = file.name.toLowerCase();
@@ -469,7 +370,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     }
 
     // Check file size limit (500MB)
-    const maxFileSize = 500 * 1024 * 1024; // 500MB
+    const maxFileSize = 500 * 1024 * 1024;
     if (file.size > maxFileSize) {
       toast({
         title: "Arquivo muito grande",
@@ -519,11 +420,10 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       setConvertedData(processedData);
       setProgress(70);
 
-      // Upload sequentially with automatic block division
-      await uploadSequentially(processedData);
+      // Upload directly to server
+      await uploadDirectlyToServer(processedData);
 
       setProgress(100);
-      setEta('Concluído!');
 
     } catch (error: any) {
       addLog('error', `❌ Erro: ${error.message}`);
@@ -561,17 +461,17 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Database className="h-5 w-5" />
-          Upload de Catálogo M3U/JSON
+          Upload de Catálogo M3U/JSON - Diagnóstico Avançado
           <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
             <Server className="h-4 w-4" />
-            Divisão automática em blocos ≤ {MAX_BLOCK_SIZE_MB}MB
+            Sistema de diagnóstico integrado
           </div>
         </CardTitle>
         <CardDescription>
-          Sistema inteligente: divide automaticamente listas grandes em blocos seguros e faz upload sequencial.
+          Sistema com diagnóstico completo para identificar problemas de inserção no Supabase.
           <br />
-          <span className="text-orange-600 font-medium">
-            🔍 Após o upload, verifique no Supabase Studio se os dados aparecem na tabela 'catalogo_m3u_live'
+          <span className="text-red-600 font-medium">
+            🔍 Verificação automática: RLS, policies, chaves de acesso e inserção real na tabela
           </span>
         </CardDescription>
       </CardHeader>
@@ -595,8 +495,8 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
             <p className="text-xs text-muted-foreground">
               Formatos aceitos: .m3u, .m3u8, .json (máx: 500MB)
             </p>
-            <p className="text-xs text-green-600 font-medium">
-              🚀 Sistema automático: divide em blocos ≤ {MAX_BLOCK_SIZE_MB}MB
+            <p className="text-xs text-blue-600 font-medium">
+              🔍 Sistema com diagnóstico avançado ativo
             </p>
           </div>
           <Input
@@ -613,45 +513,94 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
           <div className="space-y-3">
             <div className="flex items-center justify-between text-sm">
               <span className="flex items-center gap-2">
-                {converting ? "🔄 Convertendo M3U..." : uploading ? "📤 Enviando blocos..." : "✅ Processando..."}
+                {converting ? "🔄 Convertendo M3U..." : uploading ? "📤 Processando no servidor..." : "✅ Concluído"}
               </span>
               <span>{progress}%</span>
             </div>
             <Progress value={progress} className="w-full" />
             
-            {totalBlocks > 0 && (
-              <div className="grid grid-cols-2 gap-4 text-xs text-muted-foreground">
-                <div>
-                  <div className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    <span>Decorrido: {elapsedTime}</span>
-                  </div>
-                  {eta && <div>Restante: {eta}</div>}
-                </div>
-                <div>
-                  <div>Bloco {currentBlock}/{totalBlocks}</div>
-                  <div className="flex items-center gap-1">
-                    <Database className="h-3 w-3" />
-                    <span>{processedChannels.toLocaleString()}/{totalChannelsToProcess.toLocaleString()} canais</span>
-                  </div>
-                </div>
+            <div className="text-xs text-muted-foreground">
+              <div className="flex items-center gap-1">
+                <Clock className="h-3 w-3" />
+                <span>Tempo decorrido: {elapsedTime}</span>
               </div>
-            )}
+            </div>
+          </div>
+        )}
+
+        {/* Diagnóstico */}
+        {diagnosticInfo && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertCircle className="h-5 w-5 text-blue-700" />
+              <span className="font-medium text-blue-700">Informações de Diagnóstico</span>
+            </div>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-muted-foreground">URL Supabase:</span>
+                <div className="font-mono text-xs bg-white p-1 rounded">{diagnosticInfo.supabase_url}</div>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Service Key:</span>
+                <div className="font-medium">{diagnosticInfo.service_key_present ? '✅ Presente' : '❌ Ausente'}</div>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Blocos processados:</span>
+                <div className="font-medium">{diagnosticInfo.chunks_processed || 0}</div>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Tamanho do bloco:</span>
+                <div className="font-medium">{diagnosticInfo.chunk_size || 0} canais</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Status da inserção */}
+        {actualInserted !== undefined && (
+          <div className={actualInserted > 0 ? "bg-green-50 border border-green-200 rounded-lg p-4" : "bg-red-50 border border-red-200 rounded-lg p-4"}>
+            <div className="flex items-center gap-2 mb-2">
+              {actualInserted > 0 ? (
+                <>
+                  <CheckCircle className="h-5 w-5 text-green-700" />
+                  <span className="font-medium text-green-700">✅ Inserção confirmada na tabela</span>
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="h-5 w-5 text-red-700" />
+                  <span className="font-medium text-red-700">🚨 Problema na inserção</span>
+                </>
+              )}
+            </div>
+            <div className="text-sm">
+              <div>Registros realmente inseridos: <strong>{actualInserted}</strong></div>
+              {actualInserted === 0 && (
+                <div className="mt-2 p-2 bg-red-100 rounded text-red-800">
+                  <strong>Possíveis causas:</strong>
+                  <ul className="list-disc list-inside mt-1 text-xs">
+                    <li>RLS (Row Level Security) ativo na tabela</li>
+                    <li>Policies restritivas bloqueando inserts</li>
+                    <li>Service Role Key incorreta ou sem permissões</li>
+                    <li>Schema da tabela incompatível</li>
+                  </ul>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
         {(uploadComplete || uploadLogs.length > 0) && (
-          <div className={uploadComplete ? "bg-green-50 border border-green-200 rounded-lg p-4" : "bg-yellow-50 border border-yellow-200 rounded-lg p-4"}>
+          <div className={uploadComplete && actualInserted > 0 ? "bg-green-50 border border-green-200 rounded-lg p-4" : "bg-yellow-50 border border-yellow-200 rounded-lg p-4"}>
             <div className="flex items-center gap-2 mb-2">
-              {uploadComplete ? (
+              {uploadComplete && actualInserted > 0 ? (
                 <>
                   <CheckCircle className="h-5 w-5 text-green-700" />
-                  <span className="font-medium text-green-700">✅ Upload automático concluído</span>
+                  <span className="font-medium text-green-700">✅ Upload e inserção bem-sucedidos</span>
                 </>
               ) : (
                 <>
                   <AlertTriangle className="h-5 w-5 text-yellow-700" />
-                  <span className="font-medium text-yellow-700">⚠ Upload em processamento...</span>
+                  <span className="font-medium text-yellow-700">⚠ Verificar resultados</span>
                 </>
               )}
             </div>
@@ -660,7 +609,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
               <div className="text-orange-700">
                 Acesse o <a href="https://supabase.com/dashboard/project/e1b3b960-0f00-4a70-b646-daeca75b83c0/editor" target="_blank" rel="noopener noreferrer" className="underline font-medium">Supabase Studio</a> e 
                 verifique se os dados aparecem na tabela <code className="bg-white px-1 rounded">catalogo_m3u_live</code>.
-                <br />Se a tabela estiver vazia, há problema nas permissões RLS ou configuração.
+                <br />Se a tabela estiver vazia, há problema nas permissões ou configuração.
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -686,15 +635,15 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
               </Button>
               <Dialog>
                 <DialogTrigger asChild>
-                  <Button variant="link" size="sm" className="h-auto p-0 text-green-600 hover:text-green-700">
-                    Ver log detalhado
+                  <Button variant="link" size="sm" className="h-auto p-0 text-blue-600 hover:text-blue-700">
+                    Ver log de diagnóstico
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="max-w-4xl max-h-[80vh]">
                   <DialogHeader>
-                    <DialogTitle>Log de Upload Automático Detalhado</DialogTitle>
+                    <DialogTitle>Log de Diagnóstico Completo</DialogTitle>
                     <DialogDescription>
-                      Detalhes técnicos completos da divisão automática e upload sequencial
+                      Logs detalhados com verificações de conexão, RLS, inserção e diagnóstico
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
@@ -777,12 +726,11 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         )}
 
         <div className="text-xs text-muted-foreground space-y-1">
-          <p>• <strong>🤖 Sistema Automático:</strong> Divide listas grandes em blocos de até {MAX_BLOCK_SIZE_MB}MB automaticamente</p>
-          <p>• <strong>📤 Upload Sequencial:</strong> Envia um bloco por vez com delay de 2s entre envios</p>
-          <p>• <strong>🧹 Limpeza Automática:</strong> Remove catálogo anterior antes de inserir o novo</p>
-          <p>• <strong>🔍 Verificação Obrigatória:</strong> Sempre confirme no Supabase Studio se os dados foram inseridos</p>
-          <p>• <strong>📊 Logs Sempre Visíveis:</strong> Disponíveis para download mesmo em caso de erro</p>
-          <p>• <strong>⚡ Escalável:</strong> Preparado para listas de qualquer tamanho</p>
+          <p>• <strong>🔍 Diagnóstico Avançado:</strong> Verifica conexão, RLS, policies e inserção real</p>
+          <p>• <strong>📊 Verificação de Dados:</strong> Confirma se os registros foram realmente inseridos</p>
+          <p>• <strong>🚨 Detecção de Problemas:</strong> Identifica RLS ativo, policies restritivas e erros de schema</p>
+          <p>• <strong>📋 Logs Detalhados:</strong> Toda operação é logada para diagnóstico</p>
+          <p>• <strong>🔗 Link Direto:</strong> Acesso rápido ao Supabase Studio para verificação</p>
         </div>
       </CardContent>
     </Card>
