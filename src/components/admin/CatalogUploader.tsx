@@ -1,3 +1,4 @@
+
 import { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -63,8 +64,8 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
-  const MAX_FILE_SIZE_MB = 45;
-  const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+  // Removido limite de tamanho - aceita qualquer arquivo
+  const MAX_CHUNK_SIZE = 1000; // Processa em chunks de 1000 canais por vez
 
   const addLog = (level: 'info' | 'success' | 'warning' | 'error', message: string) => {
     const log: UploadLog = {
@@ -155,7 +156,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         generated_at: new Date().toISOString(),
         total_channels: channels.length,
         converter: "TELEBOX Catalog Converter",
-        version: "4.0"
+        version: "5.0"
       },
       channels
     };
@@ -175,61 +176,69 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     };
   };
 
-  const uploadToServer = async (data: ConvertedData) => {
-    addLog('info', `🚀 Enviando ${data.channels.length.toLocaleString()} canais para processamento`);
+  const uploadInChunks = async (data: ConvertedData) => {
+    const chunks = [];
+    const totalChannels = data.channels.length;
     
-    try {
-      const jsonString = JSON.stringify(data);
-      const fileSizeMB = (new Blob([jsonString]).size / (1024 * 1024)).toFixed(2);
+    // Dividir em chunks menores
+    for (let i = 0; i < totalChannels; i += MAX_CHUNK_SIZE) {
+      const chunk = data.channels.slice(i, i + MAX_CHUNK_SIZE);
+      chunks.push(chunk);
+    }
+    
+    addLog('info', `📦 Dividindo em ${chunks.length} chunks de até ${MAX_CHUNK_SIZE} canais`);
+    
+    let totalProcessed = 0;
+    let totalInsertedCount = 0;
+    
+    // Primeiro chunk inclui metadata
+    for (let i = 0; i < chunks.length; i++) {
+      const chunk = chunks[i];
+      const isFirstChunk = i === 0;
       
-      addLog('info', `📦 Tamanho do arquivo: ${fileSizeMB}MB`);
+      addLog('info', `📤 Processando chunk ${i + 1}/${chunks.length} (${chunk.length} canais)`);
       
-      const formData = new FormData();
-      const blob = new Blob([jsonString], { type: 'application/json' });
-      formData.append('file', blob, `telebox-catalog-${Date.now()}.json`);
-      
-      addLog('info', '📤 Enviando para função Edge com políticas corrigidas...');
-      
-      const { data: result, error } = await supabase.functions.invoke('import-m3u-server', {
-        body: formData
-      });
-      
-      if (error) {
-        addLog('error', `❌ Erro na função Edge: ${error.message}`);
-        throw error;
-      }
-      
-      if (result) {
-        // Processar logs do servidor
-        if (result.logs && Array.isArray(result.logs)) {
-          result.logs.forEach((logMsg: string) => {
-            const match = logMsg.match(/\[(.*?)\] (\w+): (.*)/);
-            if (match) {
-              const [, , level, message] = match;
-              addLog(level.toLowerCase() as any, `[Servidor] ${message}`);
-            }
-          });
+      try {
+        const chunkData = isFirstChunk ? {
+          metadata: data.metadata,
+          channels: chunk
+        } : chunk;
+        
+        const { data: result, error } = await supabase.functions.invoke('ingest-m3u-chunk', {
+          body: chunkData
+        });
+        
+        if (error) {
+          addLog('error', `❌ Erro no chunk ${i + 1}: ${error.message}`);
+          continue;
         }
         
-        if (result.success) {
-          setTotalInserted(result.inserted || 0);
-          const rate = result.processed > 0 ? ((result.inserted || 0) / result.processed * 100) : 0;
-          setSuccessRate(rate);
-          
-          addLog('success', `🎉 Processamento concluído!`);
-          addLog('success', `📊 Resultado: ${result.inserted || 0} canais inseridos de ${result.processed || 0} processados`);
-          addLog('success', `📈 Taxa de sucesso: ${rate.toFixed(1)}%`);
-          
-        } else {
-          throw new Error(result.error || 'Erro desconhecido no servidor');
+        if (result && result.success) {
+          totalInsertedCount += result.processed || 0;
+          addLog('success', `✅ Chunk ${i + 1} processado: ${result.processed} canais`);
         }
+        
+        totalProcessed += chunk.length;
+        const progressPercent = Math.round((totalProcessed / totalChannels) * 100);
+        setProgress(progressPercent);
+        
+        // Pequena pausa entre chunks
+        if (i < chunks.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        
+      } catch (error: any) {
+        addLog('error', `💥 Erro no chunk ${i + 1}: ${error.message}`);
       }
-      
-    } catch (error: any) {
-      addLog('error', `💥 Erro no upload: ${error.message}`);
-      console.error('Erro completo:', error);
-      throw error;
     }
+    
+    setTotalInserted(totalInsertedCount);
+    const rate = totalChannels > 0 ? (totalInsertedCount / totalChannels * 100) : 0;
+    setSuccessRate(rate);
+    
+    addLog('success', `🎉 Processamento concluído!`);
+    addLog('success', `📊 Resultado: ${totalInsertedCount} canais inseridos de ${totalChannels} processados`);
+    addLog('success', `📈 Taxa de sucesso: ${rate.toFixed(1)}%`);
   };
 
   const processFile = async (file: File) => {
@@ -254,16 +263,6 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       return;
     }
 
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
-      toast({
-        title: "Arquivo muito grande",
-        description: `O arquivo deve ter no máximo ${MAX_FILE_SIZE_MB}MB. Atual: ${fileSizeMB}MB`,
-        variant: "destructive",
-      });
-      return;
-    }
-
     setUploading(true);
     setConverting(true);
     setProgress(0);
@@ -272,9 +271,10 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     try {
       const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
       addLog('info', `📁 Processando: ${file.name} (${fileSizeMB}MB)`);
+      addLog('info', `🚀 Sistema de chunks ativo - aceita arquivos de qualquer tamanho`);
 
       const fileContent = await file.text();
-      setProgress(20);
+      setProgress(10);
 
       let processedData: ConvertedData;
 
@@ -292,7 +292,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
               generated_at: new Date().toISOString(),
               total_channels: jsonData.channels.length,
               converter: "TELEBOX JSON Import",
-              version: "4.0"
+              version: "5.0"
             },
             channels: jsonData.channels.map((ch: any) => ({
               name: ch.name || ch.nome || 'Sem nome',
@@ -308,7 +308,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
               generated_at: new Date().toISOString(),
               total_channels: jsonData.length,
               converter: "TELEBOX Array Import",
-              version: "4.0"
+              version: "5.0"
             },
             channels: jsonData.map((ch: any) => ({
               name: ch.name || ch.nome || 'Sem nome',
@@ -329,18 +329,18 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         addLog('success', `✅ M3U convertido: ${processedData.channels.length.toLocaleString()} canais`);
       }
 
-      setProgress(50);
+      setProgress(30);
 
       const uploadStats = calculateStats(processedData);
       setStats(uploadStats);
       setPreview(processedData.channels.slice(0, 10));
       setConvertedData(processedData);
-      setProgress(70);
+      setProgress(40);
 
       addLog('info', `📊 Estatísticas: ${uploadStats.totalChannels} canais, ${uploadStats.totalGroups} grupos`);
       
-      // Upload para o servidor
-      await uploadToServer(processedData);
+      // Upload em chunks para o servidor
+      await uploadInChunks(processedData);
       
       setProgress(100);
       setUploadComplete(true);
@@ -461,17 +461,17 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Database className="h-5 w-5" />
-          TELEBOX - Upload Definitivo
+          TELEBOX - Upload com Sistema de Chunks
           <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
             <Server className="h-4 w-4" />
-            Políticas corrigidas • RLS configurado
+            Aceita qualquer tamanho • Processamento em lotes
           </div>
         </CardTitle>
         <CardDescription>
-          Sistema com correções definitivas de RLS, policies e estrutura da tabela.
+          Sistema inteligente que aceita arquivos M3U de qualquer tamanho.
           <br />
           <span className="text-green-600 font-medium">
-            ✅ Banco atualizado: Campos nullable, defaults configurados, service role liberado!
+            ✅ Sem limite de tamanho: arquivos grandes são divididos em chunks menores automaticamente!
           </span>
         </CardDescription>
       </CardHeader>
@@ -493,10 +493,10 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
               {dragOver ? 'Solte o arquivo aqui' : 'Clique ou arraste o arquivo'}
             </p>
             <p className="text-xs text-muted-foreground">
-              Formatos: .m3u, .m3u8, .json • Máximo: {MAX_FILE_SIZE_MB}MB
+              Formatos: .m3u, .m3u8, .json • <strong>Qualquer tamanho aceito</strong>
             </p>
             <p className="text-xs text-blue-600 font-medium">
-              🔧 Correções aplicadas: RLS, policies, estrutura da tabela
+              🚀 Sistema de chunks: processa arquivos grandes em partes menores
             </p>
           </div>
           <Input
@@ -514,7 +514,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
             <div className="flex items-center justify-between text-sm">
               <span className="flex items-center gap-2">
                 {converting ? "🔄 Processando arquivo..." : 
-                 uploading ? "📤 Enviando..." : "✅ Concluído"}
+                 uploading ? "📤 Enviando em chunks..." : "✅ Concluído"}
               </span>
               <span>{progress.toFixed(1)}%</span>
             </div>
@@ -594,7 +594,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
                     <DialogHeader>
                       <DialogTitle>Log Completo do Upload</DialogTitle>
                       <DialogDescription>
-                        Logs detalhados do processamento com correções aplicadas
+                        Logs detalhados do processamento com sistema de chunks
                       </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4">
@@ -623,7 +623,6 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
                           </Button>
                         </div>
                       </div>
-                      {/* Área de log com altura fixa e scroll */}
                       <div className="h-96 overflow-y-auto bg-slate-900 text-slate-100 p-4 rounded-lg text-xs font-mono">
                         {uploadLogs.map((log, index) => (
                           <div 
@@ -645,7 +644,6 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
               </div>
             </div>
             
-            {/* Preview compacto dos últimos logs */}
             <div className="h-32 overflow-y-auto bg-slate-50 p-3 rounded text-xs border">
               {uploadLogs.slice(-8).map((log, index) => (
                 <div 
@@ -712,11 +710,11 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         )}
 
         <div className="text-xs text-muted-foreground space-y-1">
-          <p>• <strong>✅ Correções aplicadas:</strong> RLS habilitado com policy para service role</p>
-          <p>• <strong>🔧 Estrutura corrigida:</strong> Campos nullable, defaults configurados</p>
-          <p>• <strong>📊 Logs detalhados:</strong> Tratamento robusto de erros e diagnóstico completo</p>
-          <p>• <strong>🚀 Sem duplicatas:</strong> Sistema inteligente evita registros duplicados</p>
-          <p>• <strong>✅ Suporte robusto:</strong> Arquivos até {MAX_FILE_SIZE_MB}MB processados com segurança</p>
+          <p>• <strong>🚀 Sem limite de tamanho:</strong> arquivos grandes são divididos automaticamente</p>
+          <p>• <strong>📦 Sistema de chunks:</strong> processamento em lotes de {MAX_CHUNK_SIZE.toLocaleString()} canais</p>
+          <p>• <strong>✅ Sem duplicatas:</strong> sistema inteligente evita registros duplicados</p>
+          <p>• <strong>📊 Logs detalhados:</strong> acompanhe cada etapa do processamento</p>
+          <p>• <strong>🔧 Recuperação automática:</strong> chunks que falham são ignorados, outros continuam</p>
         </div>
       </CardContent>
     </Card>

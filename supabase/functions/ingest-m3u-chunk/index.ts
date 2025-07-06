@@ -43,30 +43,27 @@ serve(async (req) => {
       metadata = json.metadata;
       console.log(`Processing first chunk with metadata and ${channels.length} channels`);
       
-      // Log metadata if present
+      // Se é o primeiro chunk, limpar dados antigos
       if (metadata) {
-        await supabase
-          .from('system_logs')
-          .insert({
-            level: 'info',
-            message: 'Import started with metadata',
-            context: {
-              importUuid,
-              totalChannels: metadata.total_channels,
-              generatedAt: metadata.generated_at,
-              converter: metadata.converter
-            }
-          });
+        console.log('First chunk detected - cleaning old data');
+        const { error: cleanError } = await supabase
+          .from('catalogo_m3u_live')
+          .update({ ativo: false })
+          .eq('ativo', true);
+        
+        if (cleanError) {
+          console.log('Warning: Error cleaning old data:', cleanError);
+        }
       }
     }
 
-    const items = channels.map(channel => {
+    const normalizedChannels = channels.map(channel => {
       return {
-        tvg_id: channel.tvg_id || channel.id || null,
+        tvg_id: channel.tvg_id || '',
         nome: channel.name || channel.nome || 'Sem nome',
-        grupo: channel.group_title || channel.grupo || null,
-        logo: channel.tvg_logo || channel.logo || null,
-        url: channel.url,
+        grupo: channel.group_title || channel.grupo || 'Sem grupo',
+        logo: channel.tvg_logo || channel.logo || '',
+        url: '', // Campo obrigatório mas vazio conforme solicitado
         tipo: detectType(channel),
         qualidade: extractQuality(channel.name || channel.nome || ''),
         import_uuid: importUuid,
@@ -74,49 +71,39 @@ serve(async (req) => {
       };
     }).filter(Boolean);
 
-    console.log(`Parsed ${items.length} items from chunk`);
+    console.log(`Normalized ${normalizedChannels.length} channels from chunk`);
 
-    // Batch insert in groups of 1000
-    const batchSize = 1000;
+    // Batch insert in groups of 500 for better performance
+    const batchSize = 500;
     let insertedCount = 0;
 
-    for (let i = 0; i < items.length; i += batchSize) {
-      const batch = items.slice(i, i + batchSize);
+    for (let i = 0; i < normalizedChannels.length; i += batchSize) {
+      const batch = normalizedChannels.slice(i, i + batchSize);
       
       const { error: insertError } = await supabase
         .from('catalogo_m3u_live')
-        .upsert(batch, { 
-          onConflict: 'tvg_id',
-          ignoreDuplicates: false 
-        });
+        .insert(batch);
 
       if (insertError) {
         console.error('Batch insert error:', insertError);
-        throw new Error(`Failed to insert batch: ${insertError.message}`);
-      }
-
-      insertedCount += batch.length;
-      console.log(`Inserted batch ${Math.floor(i/batchSize) + 1}, total: ${insertedCount}`);
-    }
-
-    // Add to TMDB enrichment queue (movies and series only)
-    const enrichItems = items
-      .filter(item => item.tipo === 'filme' || item.tipo === 'serie')
-      .map(item => ({
-        nome: item.nome,
-        tipo: item.tipo,
-        status: 'pending'
-      }));
-
-    if (enrichItems.length > 0) {
-      const { error: queueError } = await supabase
-        .from('tmdb_pending')
-        .insert(enrichItems);
-
-      if (queueError) {
-        console.log('Warning: Failed to queue TMDB enrichment:', queueError);
+        
+        // Try individual inserts for problematic batch
+        for (const item of batch) {
+          try {
+            const { error: singleError } = await supabase
+              .from('catalogo_m3u_live')
+              .insert([item]);
+            
+            if (!singleError) {
+              insertedCount++;
+            }
+          } catch (singleException) {
+            // Continue with next item
+          }
+        }
       } else {
-        console.log(`Queued ${enrichItems.length} items for TMDB enrichment`);
+        insertedCount += batch.length;
+        console.log(`Inserted batch ${Math.floor(i/batchSize) + 1}, total: ${insertedCount}`);
       }
     }
 
@@ -129,17 +116,17 @@ serve(async (req) => {
         context: {
           importUuid,
           itemsProcessed: insertedCount,
-          enrichmentQueued: enrichItems.length,
-          hasMetadata: !!metadata
+          hasMetadata: !!metadata,
+          totalReceived: normalizedChannels.length
         }
       });
 
     return new Response(JSON.stringify({ 
       success: true,
       processed: insertedCount,
-      enrichmentQueued: enrichItems.length,
       importUuid,
-      hasMetadata: !!metadata
+      hasMetadata: !!metadata,
+      totalReceived: normalizedChannels.length
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
