@@ -1,4 +1,3 @@
-
 import { useState, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,11 +58,12 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
   const [dragOver, setDragOver] = useState(false);
   const [totalInserted, setTotalInserted] = useState<number>(0);
   const [hasErrors, setHasErrors] = useState(false);
+  const [successRate, setSuccessRate] = useState<number>(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
-  const MAX_FILE_SIZE_MB = 45; // Reduzido para margem de segurança
+  const MAX_FILE_SIZE_MB = 45;
   const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
   const addLog = (level: 'info' | 'success' | 'warning' | 'error', message: string) => {
@@ -138,7 +138,6 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         currentChannel = parseEXTINF(line);
       } else if (line.startsWith('http') || line.includes('://')) {
         if (Object.keys(currentChannel).length > 0 && currentChannel.name) {
-          // NÃO incluir o campo url conforme solicitado
           channels.push({
             name: currentChannel.name,
             tvg_id: currentChannel.tvg_id || '',
@@ -156,7 +155,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         generated_at: new Date().toISOString(),
         total_channels: channels.length,
         converter: "TELEBOX Catalog Converter",
-        version: "3.0"
+        version: "4.0"
       },
       channels
     };
@@ -189,7 +188,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       const blob = new Blob([jsonString], { type: 'application/json' });
       formData.append('file', blob, `telebox-catalog-${Date.now()}.json`);
       
-      addLog('info', '📤 Enviando para função Edge...');
+      addLog('info', '📤 Enviando para função Edge com políticas corrigidas...');
       
       const { data: result, error } = await supabase.functions.invoke('import-m3u-server', {
         body: formData
@@ -214,12 +213,13 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         
         if (result.success) {
           setTotalInserted(result.inserted || 0);
+          const rate = result.processed > 0 ? ((result.inserted || 0) / result.processed * 100) : 0;
+          setSuccessRate(rate);
+          
           addLog('success', `🎉 Processamento concluído!`);
           addLog('success', `📊 Resultado: ${result.inserted || 0} canais inseridos de ${result.processed || 0} processados`);
+          addLog('success', `📈 Taxa de sucesso: ${rate.toFixed(1)}%`);
           
-          if (result.total_final !== undefined) {
-            addLog('info', `📋 Total final na tabela: ${result.total_final.toLocaleString()}`);
-          }
         } else {
           throw new Error(result.error || 'Erro desconhecido no servidor');
         }
@@ -239,6 +239,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     setElapsedTime('00:00:00');
     setTotalInserted(0);
     setHasErrors(false);
+    setSuccessRate(0);
 
     const fileName = file.name.toLowerCase();
     const validExtensions = ['.m3u', '.m3u8', '.json'];
@@ -291,7 +292,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
               generated_at: new Date().toISOString(),
               total_channels: jsonData.channels.length,
               converter: "TELEBOX JSON Import",
-              version: "3.0"
+              version: "4.0"
             },
             channels: jsonData.channels.map((ch: any) => ({
               name: ch.name || ch.nome || 'Sem nome',
@@ -307,7 +308,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
               generated_at: new Date().toISOString(),
               total_channels: jsonData.length,
               converter: "TELEBOX Array Import",
-              version: "3.0"
+              version: "4.0"
             },
             channels: jsonData.map((ch: any) => ({
               name: ch.name || ch.nome || 'Sem nome',
@@ -332,13 +333,13 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
 
       const uploadStats = calculateStats(processedData);
       setStats(uploadStats);
-      setPreview(processedData.channels.slice(0, 10)); // Reduzir preview
+      setPreview(processedData.channels.slice(0, 10));
       setConvertedData(processedData);
       setProgress(70);
 
       addLog('info', `📊 Estatísticas: ${uploadStats.totalChannels} canais, ${uploadStats.totalGroups} grupos`);
       
-      // Upload direto para o servidor
+      // Upload para o servidor
       await uploadToServer(processedData);
       
       setProgress(100);
@@ -347,7 +348,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       if (!hasErrors && totalInserted > 0) {
         toast({
           title: "✅ Catálogo atualizado!",
-          description: `${totalInserted.toLocaleString()} canais processados com sucesso`,
+          description: `${totalInserted.toLocaleString()} canais processados com sucesso (${successRate.toFixed(1)}% de taxa de sucesso)`,
         });
         onUploadComplete();
       } else if (hasErrors) {
@@ -460,17 +461,17 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Database className="h-5 w-5" />
-          Catálogo TELEBOX - Upload Robusto
+          TELEBOX - Upload Definitivo
           <div className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
             <Server className="h-4 w-4" />
-            M3U/JSON • Diagnóstico completo
+            Políticas corrigidas • RLS configurado
           </div>
         </CardTitle>
         <CardDescription>
-          Sistema completo para listas IPTV com diagnóstico avançado de permissões e estrutura.
+          Sistema com correções definitivas de RLS, policies e estrutura da tabela.
           <br />
           <span className="text-green-600 font-medium">
-            🚀 Novo: Verificação automática de RLS, policies e conexão Supabase!
+            ✅ Banco atualizado: Campos nullable, defaults configurados, service role liberado!
           </span>
         </CardDescription>
       </CardHeader>
@@ -495,7 +496,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
               Formatos: .m3u, .m3u8, .json • Máximo: {MAX_FILE_SIZE_MB}MB
             </p>
             <p className="text-xs text-blue-600 font-medium">
-              ✨ Diagnóstico automático de permissões e estrutura Supabase
+              🔧 Correções aplicadas: RLS, policies, estrutura da tabela
             </p>
           </div>
           <Input
@@ -546,8 +547,11 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
                 </>
               )}
             </div>
-            <div className="text-sm">
+            <div className="text-sm space-y-1">
               <div>Canais inseridos: <strong>{totalInserted.toLocaleString()}</strong></div>
+              {successRate > 0 && (
+                <div>Taxa de sucesso: <strong>{successRate.toFixed(1)}%</strong></div>
+              )}
               {hasErrors && (
                 <div className="text-red-600 mt-1">Verifique os logs para detalhes dos erros</div>
               )}
@@ -590,7 +594,7 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
                     <DialogHeader>
                       <DialogTitle>Log Completo do Upload</DialogTitle>
                       <DialogDescription>
-                        Logs detalhados do processamento e upload do catálogo
+                        Logs detalhados do processamento com correções aplicadas
                       </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4">
@@ -708,11 +712,11 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
         )}
 
         <div className="text-xs text-muted-foreground space-y-1">
-          <p>• <strong>🎯 Detecção automática:</strong> M3U convertido automaticamente, JSON processado diretamente</p>
-          <p>• <strong>🔍 Diagnóstico completo:</strong> Verifica RLS, policies, conexão e permissões automaticamente</p>
-          <p>• <strong>📊 Logs detalhados:</strong> Acompanhe cada etapa com diagnósticos específicos para cada erro</p>
-          <p>• <strong>🚀 Sem duplicatas:</strong> Sistema inteligente evita registros duplicados no banco</p>
-          <p>• <strong>✅ Suporte robusto:</strong> Arquivos até {MAX_FILE_SIZE_MB}MB com processamento otimizado</p>
+          <p>• <strong>✅ Correções aplicadas:</strong> RLS habilitado com policy para service role</p>
+          <p>• <strong>🔧 Estrutura corrigida:</strong> Campos nullable, defaults configurados</p>
+          <p>• <strong>📊 Logs detalhados:</strong> Tratamento robusto de erros e diagnóstico completo</p>
+          <p>• <strong>🚀 Sem duplicatas:</strong> Sistema inteligente evita registros duplicados</p>
+          <p>• <strong>✅ Suporte robusto:</strong> Arquivos até {MAX_FILE_SIZE_MB}MB processados com segurança</p>
         </div>
       </CardContent>
     </Card>

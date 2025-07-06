@@ -23,24 +23,23 @@ serve(async (req) => {
   };
 
   try {
-    addLog('info', '🚀 TELEBOX - Iniciando processamento de catálogo');
+    addLog('info', '🚀 TELEBOX - Iniciando processamento definitivo do catálogo');
     
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     
     if (!supabaseUrl || !supabaseServiceKey) {
-      throw new Error('❌ Variáveis de ambiente Supabase não configuradas (URL ou SERVICE_KEY)');
+      throw new Error('❌ Variáveis de ambiente Supabase não configuradas');
     }
 
-    addLog('info', `✅ Credenciais OK - URL: ${supabaseUrl.substring(0, 30)}...`);
+    addLog('info', `✅ Credenciais configuradas - URL: ${supabaseUrl.substring(0, 30)}...`);
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // DIAGNÓSTICO COMPLETO DA CONEXÃO E TABELA
-    addLog('info', '🔍 Executando diagnóstico completo...');
+    // TESTE DE CONEXÃO BÁSICA
+    addLog('info', '🔍 Testando conexão básica com Supabase...');
     
     try {
-      // 1. Testar conexão básica
       const { data: testConn, error: connError } = await supabase
         .from('catalogo_m3u_live')
         .select('count(*)', { count: 'exact', head: true });
@@ -49,61 +48,13 @@ serve(async (req) => {
         addLog('error', `❌ ERRO DE CONEXÃO: ${connError.message}`);
         addLog('error', `   Código: ${connError.code || 'N/A'}`);
         addLog('error', `   Detalhes: ${connError.details || 'N/A'}`);
-        addLog('error', `   Hint: ${connError.hint || 'N/A'}`);
-        
-        if (connError.message.includes('permission denied') || connError.message.includes('RLS')) {
-          addLog('error', '🚨 PROBLEMA DE PERMISSÃO/RLS DETECTADO!');
-          addLog('info', '💡 SOLUÇÃO: Execute no Supabase SQL Editor:');
-          addLog('info', '   ALTER TABLE catalogo_m3u_live DISABLE ROW LEVEL SECURITY;');
-          addLog('info', '   -- OU criar policy permissiva para service_role');
-        }
-        
         throw connError;
       }
       
       addLog('success', `✅ Conexão OK - Registros atuais: ${testConn || 0}`);
       
-      // 2. Testar permissões de INSERT
-      addLog('info', '🧪 Testando permissões INSERT...');
-      
-      const testRecord = {
-        nome: 'TESTE_CONEXAO_' + Date.now(),
-        tipo: 'canal',
-        grupo: 'TESTE',
-        logo: '',
-        qualidade: 'SD',
-        tvg_id: 'test_' + Date.now(),
-        ativo: true
-      };
-      
-      const { data: insertTest, error: insertError } = await supabase
-        .from('catalogo_m3u_live')
-        .insert([testRecord])
-        .select('id');
-      
-      if (insertError) {
-        addLog('error', `❌ ERRO DE PERMISSÃO INSERT: ${insertError.message}`);
-        addLog('error', `   Código: ${insertError.code || 'N/A'}`);
-        
-        if (insertError.message.includes('permission denied') || insertError.code === '42501') {
-          addLog('error', '🚨 SEM PERMISSÃO DE INSERT!');
-          addLog('info', '💡 SOLUÇÃO: Execute no Supabase SQL Editor:');
-          addLog('info', '   ALTER TABLE catalogo_m3u_live DISABLE ROW LEVEL SECURITY;');
-        }
-        
-        throw insertError;
-      }
-      
-      if (insertTest && insertTest.length > 0) {
-        addLog('success', `✅ INSERT OK - ID criado: ${insertTest[0].id}`);
-        
-        // Limpar registro de teste
-        await supabase.from('catalogo_m3u_live').delete().eq('id', insertTest[0].id);
-        addLog('info', '🧹 Registro de teste removido');
-      }
-      
     } catch (diagError: any) {
-      addLog('error', `💥 FALHA NO DIAGNÓSTICO: ${diagError.message}`);
+      addLog('error', `💥 FALHA NA CONEXÃO: ${diagError.message}`);
       throw diagError;
     }
     
@@ -125,8 +76,8 @@ serve(async (req) => {
     const fileSizeMB = (file.size / (1024 * 1024)).toFixed(2);
     addLog('info', `📁 Arquivo: ${file.name} (${fileSizeMB}MB)`);
     
-    if (file.size > 50 * 1024 * 1024) { // 50MB limit
-      throw new Error(`❌ Arquivo muito grande: ${fileSizeMB}MB (máx: 50MB)`);
+    if (file.size > 45 * 1024 * 1024) { // 45MB limit
+      throw new Error(`❌ Arquivo muito grande: ${fileSizeMB}MB (máx: 45MB)`);
     }
     
     const fileContent = await file.text();
@@ -177,7 +128,7 @@ serve(async (req) => {
           currentChannel = parseEXTINF(line);
         } else if (line.startsWith('http') || line.includes('://')) {
           if (Object.keys(currentChannel).length > 0) {
-            // Não incluir URL conforme solicitado
+            // NÃO incluir URL conforme solicitado
             channels.push({
               nome: currentChannel.name || 'Sem nome',
               tipo: determineChannelType(currentChannel.group_title || ''),
@@ -201,43 +152,48 @@ serve(async (req) => {
       throw new Error('❌ Nenhum canal válido encontrado no arquivo');
     }
 
-    // NORMALIZAR DADOS
-    addLog('info', '🔧 Normalizando dados...');
+    // NORMALIZAR DADOS - CAMPOS COMPATÍVEIS COM A NOVA ESTRUTURA
+    addLog('info', '🔧 Normalizando dados para inserção...');
     const normalizedChannels = channels.map((channel: any) => ({
-      nome: String(channel.name || channel.nome || 'Sem nome').trim(),
+      nome: String(channel.name || channel.nome || 'Sem nome').trim().substring(0, 255),
       tipo: determineChannelType(String(channel.group_title || channel.grupo || '')),
-      grupo: String(channel.group_title || channel.grupo || 'Sem grupo').trim(),
-      logo: String(channel.tvg_logo || channel.logo || '').trim(),
+      grupo: String(channel.group_title || channel.grupo || 'Sem grupo').trim().substring(0, 255),
+      logo: String(channel.tvg_logo || channel.logo || '').trim().substring(0, 500),
       qualidade: determineQuality(String(channel.name || channel.nome || '')),
-      tvg_id: String(channel.tvg_id || '').trim(),
-      ativo: true
+      tvg_id: String(channel.tvg_id || '').trim().substring(0, 100),
+      ativo: true,
+      url: '' // Campo obrigatório mas vazio conforme solicitado
     }));
 
     addLog('success', `✅ ${normalizedChannels.length.toLocaleString()} canais normalizados`);
 
-    // INSERÇÃO EM LOTES (5000 por vez para segurança)
-    const batchSize = 5000;
+    // INSERÇÃO COM TRATAMENTO ROBUSTO DE ERROS
+    const batchSize = 2000; // Reduzido para maior segurança
     const totalBatches = Math.ceil(normalizedChannels.length / batchSize);
     
-    addLog('info', `📦 Inserção em ${totalBatches} lotes de ${batchSize.toLocaleString()} canais`);
+    addLog('info', `📦 Inserção em ${totalBatches} lotes de até ${batchSize.toLocaleString()} canais`);
     
     // 1. Marcar todos os registros existentes como inativos
     addLog('info', '🔄 Marcando registros antigos como inativos...');
-    const { error: deactivateError } = await supabase
-      .from('catalogo_m3u_live')
-      .update({ ativo: false, updated_at: new Date().toISOString() })
-      .eq('ativo', true);
-    
-    if (deactivateError) {
-      addLog('warning', `⚠️ Aviso ao desativar registros: ${deactivateError.message}`);
-    } else {
-      addLog('success', '✅ Registros antigos marcados como inativos');
+    try {
+      const { error: deactivateError } = await supabase
+        .from('catalogo_m3u_live')
+        .update({ ativo: false, updated_at: new Date().toISOString() })
+        .eq('ativo', true);
+      
+      if (deactivateError) {
+        addLog('warning', `⚠️ Aviso ao desativar registros: ${deactivateError.message}`);
+      } else {
+        addLog('success', '✅ Registros antigos marcados como inativos');
+      }
+    } catch (deactivateException: any) {
+      addLog('warning', `⚠️ Exceção ao desativar registros: ${deactivateException.message}`);
     }
     
     let totalInserted = 0;
     let totalErrors = 0;
     
-    // 2. Inserir novos registros em lotes
+    // 2. Inserir novos registros em lotes com tratamento detalhado de erro
     for (let i = 0; i < totalBatches; i++) {
       const batch = normalizedChannels.slice(i * batchSize, (i + 1) * batchSize);
       
@@ -250,10 +206,31 @@ serve(async (req) => {
           .select('id');
 
         if (batchError) {
-          addLog('error', `❌ Erro no lote ${i + 1}: ${batchError.message}`);
+          addLog('error', `❌ Erro no lote ${i + 1}:`);
+          addLog('error', `   Mensagem: ${batchError.message}`);
           addLog('error', `   Código: ${batchError.code || 'N/A'}`);
           addLog('error', `   Detalhes: ${batchError.details || 'N/A'}`);
-          totalErrors += batch.length;
+          addLog('error', `   Hint: ${batchError.hint || 'N/A'}`);
+          
+          // Tentar inserir um por vez para identificar registros problemáticos
+          let individualInserts = 0;
+          for (const singleChannel of batch) {
+            try {
+              const { error: singleError } = await supabase
+                .from('catalogo_m3u_live')
+                .insert([singleChannel]);
+              
+              if (!singleError) {
+                individualInserts++;
+              }
+            } catch (singleException) {
+              // Continuar tentando os próximos
+            }
+          }
+          
+          totalInserted += individualInserts;
+          totalErrors += (batch.length - individualInserts);
+          addLog('info', `   Inserções individuais bem-sucedidas: ${individualInserts}`);
           continue;
         }
 
@@ -267,34 +244,42 @@ serve(async (req) => {
         totalErrors += batch.length;
       }
       
-      // Pausa entre lotes para não sobrecarregar
+      // Pausa entre lotes para evitar sobrecarga
       if (i < totalBatches - 1) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 300));
       }
     }
 
     // 3. Limpeza de registros antigos (opcional - manter por 24h)
     addLog('info', '🧹 Limpando registros antigos...');
-    const { error: cleanupError } = await supabase
-      .from('catalogo_m3u_live')
-      .delete()
-      .eq('ativo', false)
-      .lt('updated_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+    try {
+      const { error: cleanupError } = await supabase
+        .from('catalogo_m3u_live')
+        .delete()
+        .eq('ativo', false)
+        .lt('updated_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
 
-    if (cleanupError) {
-      addLog('warning', `⚠️ Aviso na limpeza: ${cleanupError.message}`);
-    } else {
-      addLog('success', '✅ Registros antigos removidos');
+      if (cleanupError) {
+        addLog('warning', `⚠️ Aviso na limpeza: ${cleanupError.message}`);
+      } else {
+        addLog('success', '✅ Registros antigos removidos');
+      }
+    } catch (cleanupException) {
+      addLog('warning', `⚠️ Exceção na limpeza: ${cleanupException}`);
     }
 
     // VERIFICAÇÃO FINAL
     addLog('info', '🔍 Verificação final...');
-    const { data: finalCount, error: countError } = await supabase
-      .from('catalogo_m3u_live')
-      .select('count(*)', { count: 'exact', head: true });
-    
-    if (!countError) {
-      addLog('success', `📊 TOTAL FINAL NA TABELA: ${finalCount || 0}`);
+    try {
+      const { data: finalCount, error: countError } = await supabase
+        .from('catalogo_m3u_live')
+        .select('count(*)', { count: 'exact', head: true });
+      
+      if (!countError) {
+        addLog('success', `📊 TOTAL FINAL NA TABELA: ${finalCount || 0}`);
+      }
+    } catch (countException) {
+      addLog('warning', `⚠️ Erro ao contar registros finais`);
     }
 
     const endTime = Date.now();
@@ -303,13 +288,14 @@ serve(async (req) => {
     const success = totalInserted > 0;
     const finalMessage = success 
       ? `🎉 Importação concluída com sucesso!`
-      : `⚠️ Nenhum dado foi inserido`;
+      : `❌ Nenhum dado foi inserido - verifique logs para detalhes`;
     
     addLog('info', finalMessage);
     addLog('info', `📊 ESTATÍSTICAS FINAIS:`);
     addLog('info', `   - Canais processados: ${normalizedChannels.length.toLocaleString()}`);
     addLog('info', `   - Inseridos com sucesso: ${totalInserted.toLocaleString()}`);
     addLog('info', `   - Erros: ${totalErrors.toLocaleString()}`);
+    addLog('info', `   - Taxa de sucesso: ${((totalInserted / normalizedChannels.length) * 100).toFixed(1)}%`);
     addLog('info', `   - Tempo total: ${duration}s`);
     addLog('info', '✅ Processo finalizado');
     
@@ -318,10 +304,9 @@ serve(async (req) => {
       processed: normalizedChannels.length,
       inserted: totalInserted,
       errors: totalErrors,
-      total_final: finalCount || 0,
       duration: `${duration}s`,
       logs,
-      message: success ? 'Catálogo atualizado com sucesso' : 'Falha na inserção - verificar logs'
+      message: success ? 'Catálogo atualizado com sucesso' : 'Falha na inserção - verificar logs detalhados'
     }), {
       status: success ? 200 : 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -330,19 +315,6 @@ serve(async (req) => {
   } catch (error: any) {
     addLog('error', `💥 ERRO CRÍTICO: ${error.message}`);
     console.error('💥 Erro crítico completo:', error);
-    
-    // Diagnósticos específicos para erros comuns
-    if (error.message.includes('permission denied') || error.message.includes('RLS')) {
-      addLog('error', '🚨 PROBLEMA DE PERMISSÃO DETECTADO!');
-      addLog('info', '💡 EXECUTE NO SUPABASE SQL EDITOR:');
-      addLog('info', '   ALTER TABLE catalogo_m3u_live DISABLE ROW LEVEL SECURITY;');
-      addLog('info', '   -- Ou crie policy: CREATE POLICY "Allow service role" ON catalogo_m3u_live FOR ALL USING (auth.role() = \'service_role\');');
-    }
-    
-    if (error.message.includes('does not exist')) {
-      addLog('error', '🚨 TABELA NÃO EXISTE!');
-      addLog('info', '💡 Verifique se a tabela "catalogo_m3u_live" foi criada corretamente');
-    }
     
     return new Response(JSON.stringify({ 
       success: false,
