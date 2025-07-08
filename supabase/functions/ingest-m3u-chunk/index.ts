@@ -59,36 +59,48 @@ serve(async (req) => {
       }
     }
 
-    // Normalizar canais com validação flexível
+    // Normalizar canais - DEBUG DETALHADO
+    console.log('Raw channels received:', channels.length);
+    console.log('Sample channel data:', JSON.stringify(channels[0], null, 2));
+    
     const normalizedChannels = channels
-      .filter(channel => {
-        // Verificar se tem nome válido
+      .filter((channel, index) => {
         const name = channel?.name || channel?.nome || '';
         if (!name || name.trim().length === 0) {
-          console.log('Skipping channel without name:', JSON.stringify(channel));
+          if (index < 5) console.log('Skipping channel without name at index', index, ':', JSON.stringify(channel));
           return false;
         }
         return true;
       })
-      .map(channel => {
+      .map((channel, index) => {
         const nome = (channel.name || channel.nome || '').trim();
         const grupo = (channel.group_title || channel.grupo || 'Geral').trim();
-        const url = (channel.url || '').trim();
+        const tvgLogo = channel.tvg_logo || channel.logo || '';
+        const url = channel.url || '';
         
-        // Garantir que não há valores undefined/null
         const normalizedChannel = {
-          tvg_id: (channel.tvg_id || '').toString().trim(),
+          tvg_id: (channel.tvg_id || '').toString().trim() || null,
           nome: nome,
           grupo: grupo,
-          logo: (channel.tvg_logo || channel.logo || '').trim(),
+          logo: tvgLogo,
           url: url,
           tipo: detectType(channel),
           qualidade: extractQuality(nome),
           import_uuid: importUuid,
-          ativo: true
+          ativo: true,
+          ano: null,
+          classificacao: null,
+          descricao: null,
+          poster_url: null,
+          backdrop_url: null,
+          tmdb_id: null
         };
         
-        console.log('Normalized channel:', normalizedChannel.nome);
+        // Log primeiro canal para debug
+        if (index === 0) {
+          console.log('First normalized channel:', JSON.stringify(normalizedChannel, null, 2));
+        }
+        
         return normalizedChannel;
       });
 
