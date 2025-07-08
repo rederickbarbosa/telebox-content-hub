@@ -59,30 +59,37 @@ serve(async (req) => {
       }
     }
 
-    // Normalizar canais com validação mais flexível
+    // Normalizar canais com validação flexível
     const normalizedChannels = channels
       .filter(channel => {
-        // Validação mínima - apenas nome obrigatório
-        const hasName = (channel?.name || channel?.nome || '').trim().length > 0;
-        if (!hasName) {
-          console.log('Skipping channel without name:', channel);
+        // Verificar se tem nome válido
+        const name = channel?.name || channel?.nome || '';
+        if (!name || name.trim().length === 0) {
+          console.log('Skipping channel without name:', JSON.stringify(channel));
           return false;
         }
         return true;
       })
       .map(channel => {
-        const nome = (channel.name || channel.nome || 'Sem nome').trim();
-        return {
-          tvg_id: channel.tvg_id || channel.id || '',
+        const nome = (channel.name || channel.nome || '').trim();
+        const grupo = (channel.group_title || channel.grupo || 'Geral').trim();
+        const url = (channel.url || '').trim();
+        
+        // Garantir que não há valores undefined/null
+        const normalizedChannel = {
+          tvg_id: (channel.tvg_id || '').toString().trim(),
           nome: nome,
-          grupo: channel.group_title || channel.grupo || 'Geral',
-          logo: channel.tvg_logo || channel.logo || '',
-          url: channel.url || '', // Aceitar URL vazia conforme solicitado
+          grupo: grupo,
+          logo: (channel.tvg_logo || channel.logo || '').trim(),
+          url: url,
           tipo: detectType(channel),
           qualidade: extractQuality(nome),
           import_uuid: importUuid,
           ativo: true
         };
+        
+        console.log('Normalized channel:', normalizedChannel.nome);
+        return normalizedChannel;
       });
 
     console.log(`Normalized ${normalizedChannels.length} valid channels from chunk`);
@@ -111,13 +118,16 @@ serve(async (req) => {
       console.log(`Processing batch ${Math.floor(i/batchSize) + 1} with ${batch.length} channels`);
       
       try {
-        const { error: insertError, count } = await supabase
+        console.log('Attempting to insert batch:', batch.slice(0, 2)); // Log first 2 items for debugging
+        
+        const { data: insertResult, error: insertError, count } = await supabase
           .from('catalogo_m3u_live')
           .insert(batch)
           .select('id', { count: 'exact' });
 
         if (insertError) {
           console.error('Batch insert error:', insertError);
+          console.error('Failed batch sample:', JSON.stringify(batch[0], null, 2));
           errorCount += batch.length;
           
           // Fallback: inserir individualmente para identificar problemas
