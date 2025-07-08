@@ -180,66 +180,91 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
     const totalChannels = data.channels.length;
     const chunks = [];
     
-    // Dividir em chunks menores
+    // Dividir em chunks menores para garantir processamento
     for (let i = 0; i < totalChannels; i += MAX_CHUNK_SIZE) {
       const chunk = data.channels.slice(i, i + MAX_CHUNK_SIZE);
       chunks.push(chunk);
     }
     
     addLog('info', `📦 Total de ${totalChannels.toLocaleString()} canais divididos em ${chunks.length} chunks`);
-    addLog('info', `🚀 Iniciando envio sequencial de todos os chunks...`);
+    addLog('info', `🚀 Iniciando envio GARANTIDO de TODOS os chunks...`);
     
     let totalInsertedCount = 0;
     let totalProcessedCount = 0;
     let chunksProcessados = 0;
+    let chunksFalhados = 0;
     
-    // Processar TODOS os chunks sequencialmente
+    // Processar TODOS os chunks sequencialmente SEM PARAR
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       const isFirstChunk = i === 0;
       
-      addLog('info', `📤 Processando chunk ${i + 1}/${chunks.length} (${chunk.length} canais)`);
+      addLog('info', `📤 ENVIANDO chunk ${i + 1}/${chunks.length} (${chunk.length} canais)`);
       
-      try {
-        const chunkData = isFirstChunk ? {
-          metadata: data.metadata,
-          channels: chunk
-        } : chunk;
+      let tentativas = 0;
+      let sucesso = false;
+      
+      // Tentar até 3 vezes por chunk
+      while (tentativas < 3 && !sucesso) {
+        tentativas++;
         
-        const { data: result, error } = await supabase.functions.invoke('ingest-m3u-chunk', {
-          body: chunkData
-        });
-        
-        if (error) {
-          addLog('error', `❌ Erro no chunk ${i + 1}: ${error.message}`);
-          // Continue com próximo chunk mesmo com erro
-          continue;
+        try {
+          const chunkData = isFirstChunk ? {
+            metadata: data.metadata,
+            channels: chunk
+          } : chunk;
+          
+          addLog('info', `   Tentativa ${tentativas}/3 para chunk ${i + 1}...`);
+          
+          const { data: result, error } = await supabase.functions.invoke('ingest-m3u-chunk', {
+            body: chunkData
+          });
+          
+          if (error) {
+            addLog('warning', `   ⚠️ Erro tentativa ${tentativas}: ${error.message}`);
+            if (tentativas < 3) {
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              continue;
+            }
+          }
+          
+          if (result && result.success) {
+            const inserted = result.processed || 0;
+            totalInsertedCount += inserted;
+            chunksProcessados++;
+            sucesso = true;
+            addLog('success', `   ✅ SUCESSO chunk ${i + 1}: ${inserted} canais inseridos`);
+          } else {
+            addLog('warning', `   ⚠️ Resposta inválida chunk ${i + 1}: ${JSON.stringify(result)}`);
+            if (tentativas < 3) {
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              continue;
+            }
+          }
+          
+        } catch (error: any) {
+          addLog('error', `   💥 Erro crítico tentativa ${tentativas}: ${error.message}`);
+          if (tentativas < 3) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            continue;
+          }
         }
-        
-        if (result && result.success) {
-          const inserted = result.processed || 0;
-          totalInsertedCount += inserted;
-          chunksProcessados++;
-          addLog('success', `✅ Chunk ${i + 1}/${chunks.length} processado: ${inserted} canais inseridos`);
-        } else {
-          addLog('warning', `⚠️ Chunk ${i + 1} processado mas sem confirmação de inserção`);
-        }
-        
-        totalProcessedCount += chunk.length;
-        const progressPercent = Math.round((totalProcessedCount / totalChannels) * 100);
-        setProgress(progressPercent);
-        setTotalProcessed(totalProcessedCount);
-        setTotalInserted(totalInsertedCount);
-        
-        // Pausa entre chunks para evitar sobrecarga
-        if (i < chunks.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-        
-      } catch (error: any) {
-        addLog('error', `💥 Erro crítico no chunk ${i + 1}: ${error.message}`);
-        // Continue com próximo chunk
-        continue;
+      }
+      
+      if (!sucesso) {
+        chunksFalhados++;
+        addLog('error', `❌ FALHOU chunk ${i + 1} após 3 tentativas`);
+      }
+      
+      totalProcessedCount += chunk.length;
+      const progressPercent = Math.round(((i + 1) / chunks.length) * 100);
+      setProgress(progressPercent);
+      setTotalProcessed(totalProcessedCount);
+      setTotalInserted(totalInsertedCount);
+      
+      // Pausa menor entre chunks
+      if (i < chunks.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
     
