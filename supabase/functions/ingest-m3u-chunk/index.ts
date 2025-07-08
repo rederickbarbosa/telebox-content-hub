@@ -59,26 +59,27 @@ serve(async (req) => {
       }
     }
 
-    // Normalizar canais com validação rigorosa
+    // Normalizar canais com validação mais flexível
     const normalizedChannels = channels
       .filter(channel => {
-        // Filtrar apenas canais com nome válido
-        const hasValidName = channel?.name || channel?.nome;
-        if (!hasValidName) {
+        // Validação mínima - apenas nome obrigatório
+        const hasName = (channel?.name || channel?.nome || '').trim().length > 0;
+        if (!hasName) {
           console.log('Skipping channel without name:', channel);
           return false;
         }
         return true;
       })
       .map(channel => {
+        const nome = (channel.name || channel.nome || 'Sem nome').trim();
         return {
           tvg_id: channel.tvg_id || channel.id || '',
-          nome: channel.name || channel.nome || 'Sem nome',
-          grupo: channel.group_title || channel.grupo || 'Sem grupo',
+          nome: nome,
+          grupo: channel.group_title || channel.grupo || 'Geral',
           logo: channel.tvg_logo || channel.logo || '',
-          url: '', // Campo obrigatório mas vazio conforme solicitado
+          url: channel.url || '', // Aceitar URL vazia conforme solicitado
           tipo: detectType(channel),
-          qualidade: extractQuality(channel.name || channel.nome || ''),
+          qualidade: extractQuality(nome),
           import_uuid: importUuid,
           ativo: true
         };

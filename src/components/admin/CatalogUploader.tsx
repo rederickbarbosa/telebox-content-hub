@@ -64,8 +64,8 @@ const CatalogUploader = ({ onUploadComplete }: CatalogUploaderProps) => {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
-  // Tamanho do chunk reduzido para evitar timeouts
-  const MAX_CHUNK_SIZE = 500;
+  // Chunk maior para reduzir número total de chunks
+  const MAX_CHUNK_SIZE = 1000;
 
   const addLog = (level: 'info' | 'success' | 'warning' | 'error', message: string) => {
     const log: UploadLog = {
