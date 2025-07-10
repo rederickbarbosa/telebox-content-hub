@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Search, Play, ExternalLink, Star, Calendar, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import SeriesModal from "@/components/catalog/SeriesModal";
 
 interface Conteudo {
   id: string;
@@ -19,6 +20,10 @@ interface Conteudo {
   qualidade: string;
   tvg_id: string;
   ativo: boolean;
+  // Estrutura série/temporada/episódio
+  serie_nome?: string;
+  temporada?: number;
+  episodio?: number;
   // Dados TMDB carregados dinamicamente
   tmdb_data?: {
     poster_path?: string;
@@ -44,6 +49,8 @@ const Catalogo = () => {
   const [qualidadeFilter, setQualidadeFilter] = useState("todos");
   const [loading, setLoading] = useState(true);
   const [tmdbLoading, setTmdbLoading] = useState<{[key: string]: boolean}>({});
+  const [selectedSeries, setSelectedSeries] = useState<string | null>(null);
+  const [selectedSeriesData, setSelectedSeriesData] = useState<any>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -87,15 +94,37 @@ const Catalogo = () => {
   const filterConteudos = () => {
     let filtered = conteudos;
 
+    // Para séries, agrupar por série base (sem temporada/episódio)
+    if (tipoFilter === "serie") {
+      const seriesGrouped = new Map();
+      
+      filtered.forEach(item => {
+        if (item.tipo === 'serie') {
+          // Extrair nome base da série (remover S01E01, temporada, etc)
+          const serieBase = extractSerieBaseName(item.nome);
+          if (!seriesGrouped.has(serieBase)) {
+            seriesGrouped.set(serieBase, {
+              ...item,
+              nome: serieBase,
+              serie_nome: serieBase
+            });
+          }
+        }
+      });
+      
+      filtered = Array.from(seriesGrouped.values());
+    } else {
+      if (tipoFilter !== "todos") {
+        filtered = filtered.filter(item => item.tipo === tipoFilter);
+      }
+    }
+
     if (searchTerm) {
       filtered = filtered.filter(item =>
         item.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.grupo.toLowerCase().includes(searchTerm.toLowerCase())
+        item.grupo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (item.serie_nome && item.serie_nome.toLowerCase().includes(searchTerm.toLowerCase()))
       );
-    }
-
-    if (tipoFilter !== "todos") {
-      filtered = filtered.filter(item => item.tipo === tipoFilter);
     }
 
     if (generoFilter !== "todos") {
@@ -109,6 +138,20 @@ const Catalogo = () => {
     }
 
     setFilteredConteudos(filtered);
+  };
+
+  // Função para extrair nome base da série
+  const extractSerieBaseName = (nome: string): string => {
+    // Remove padrões como S01E01, T01E01, temporada, episódio, etc
+    return nome
+      .replace(/\s*S\d+E\d+.*$/i, '')
+      .replace(/\s*T\d+E\d+.*$/i, '')
+      .replace(/\s*\d+ª?\s*Temporada.*$/i, '')
+      .replace(/\s*Temporada\s*\d+.*$/i, '')
+      .replace(/\s*Episódio\s*\d+.*$/i, '')
+      .replace(/\s*EP\s*\d+.*$/i, '')
+      .replace(/\s*Ep\.\s*\d+.*$/i, '')
+      .trim();
   };
 
   const fetchTMDBData = async (conteudo: Conteudo) => {
@@ -286,13 +329,72 @@ const Catalogo = () => {
 
         {/* Grid de Conteúdos */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-          {filteredConteudos.map((conteudo) => (
-            <Dialog key={conteudo.id}>
-              <DialogTrigger asChild>
+          {filteredConteudos.map((conteudo) => {
+            if (conteudo.tipo === 'serie') {
+              return (
                 <Card 
+                  key={conteudo.id}
                   className="cursor-pointer hover:shadow-telebox-hero transition-shadow group"
-                  onClick={() => fetchTMDBData(conteudo)}
+                  onClick={() => {
+                    fetchTMDBData(conteudo);
+                    setSelectedSeries(conteudo.serie_nome || conteudo.nome);
+                    setSelectedSeriesData(conteudo);
+                  }}
                 >
+                  <div className="relative overflow-hidden rounded-t-lg">
+                    <img
+                      src={
+                        conteudo.tmdb_data?.poster_path 
+                          ? `https://image.tmdb.org/t/p/w500${conteudo.tmdb_data.poster_path}`
+                          : conteudo.logo || "/placeholder.svg"
+                      }
+                      alt={conteudo.nome}
+                      className="w-full h-64 object-cover group-hover:scale-105 transition-transform"
+                      loading="lazy"
+                    />
+                    <div className="absolute top-2 left-2 flex flex-col gap-1">
+                      <Badge variant="secondary" className="bg-purple-600 text-white text-xs">
+                        Série
+                      </Badge>
+                      {conteudo.qualidade && (
+                        <Badge variant="secondary" className="bg-blue-600 text-white text-xs">
+                          {conteudo.qualidade}
+                        </Badge>
+                      )}
+                    </div>
+                    {conteudo.tmdb_data?.vote_average && (
+                      <div className="absolute top-2 right-2">
+                        <Badge variant="secondary" className="bg-yellow-500 text-black text-xs">
+                          <Star className="h-3 w-3 mr-1" />
+                          {conteudo.tmdb_data.vote_average.toFixed(1)}
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
+                  <CardHeader className="p-3">
+                    <CardTitle className="text-sm font-semibold line-clamp-2">
+                      {conteudo.serie_nome || conteudo.nome}
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      {conteudo.grupo}
+                      {conteudo.tmdb_data?.release_date && (
+                        <span className="block">
+                          {new Date(conteudo.tmdb_data.release_date).getFullYear()}
+                        </span>
+                      )}
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
+              );
+            }
+
+            return (
+              <Dialog key={conteudo.id}>
+                <DialogTrigger asChild>
+                  <Card 
+                    className="cursor-pointer hover:shadow-telebox-hero transition-shadow group"
+                    onClick={() => fetchTMDBData(conteudo)}
+                  >
                   <div className="relative overflow-hidden rounded-t-lg">
                     <img
                       src={
@@ -444,8 +546,22 @@ const Catalogo = () => {
                 </div>
               </DialogContent>
             </Dialog>
-          ))}
+            );
+          })}
         </div>
+
+        {/* Modal de Séries */}
+        {selectedSeries && (
+          <SeriesModal
+            isOpen={!!selectedSeries}
+            onClose={() => {
+              setSelectedSeries(null);
+              setSelectedSeriesData(null);
+            }}
+            serieName={selectedSeries}
+            serieData={selectedSeriesData}
+          />
+        )}
 
         {filteredConteudos.length === 0 && (
           <div className="text-center py-12">

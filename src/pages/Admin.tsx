@@ -13,6 +13,7 @@ import { Settings, Upload, Database, Users, Bell } from "lucide-react";
 
 import CatalogUploader from "@/components/admin/CatalogUploader";
 import AppManager from "@/components/admin/AppManager";
+import PopulateApps from "@/components/admin/PopulateApps";
 import NotificationManager from "@/components/admin/NotificationManager";
 import UserManager from "@/components/admin/UserManager";
 import EdgeFunctionTester from "@/components/admin/EdgeFunctionTester";
@@ -368,6 +369,7 @@ const Admin = () => {
           </TabsContent>
 
           <TabsContent value="apps" className="space-y-6">
+            <PopulateApps />
             <AppManager />
           </TabsContent>
 

@@ -1,16 +1,88 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle, Star, Play, Clock, Users, Globe } from "lucide-react";
 import ChannelCarousel from "@/components/home/ChannelCarousel";
+import { supabase } from "@/integrations/supabase/client";
 
 const Home = () => {
+  const [backgroundImages, setBackgroundImages] = useState<string[]>([]);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [stats, setStats] = useState({ canais: 50000, filmes: 20000, series: 10000 });
+
+  useEffect(() => {
+    loadBackgroundImages();
+    loadRealStats();
+    
+    // Trocar imagem de fundo a cada 5 segundos
+    const interval = setInterval(() => {
+      setCurrentImageIndex(prev => 
+        backgroundImages.length > 0 ? (prev + 1) % backgroundImages.length : 0
+      );
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [backgroundImages.length]);
+
+  const loadBackgroundImages = async () => {
+    try {
+      // Buscar filmes e séries brasileiros populares para imagens de fundo
+      const { data } = await supabase
+        .from('catalogo_m3u_live')
+        .select('nome, logo')
+        .in('tipo', ['filme', 'serie'])
+        .not('logo', 'is', null)
+        .limit(10);
+
+      if (data && data.length > 0) {
+        const images = data
+          .map(item => item.logo)
+          .filter(logo => logo && (logo.includes('tmdb.org') || logo.includes('image')));
+        
+        if (images.length > 0) {
+          setBackgroundImages(images);
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao carregar imagens de fundo:', error);
+    }
+  };
+
+  const loadRealStats = async () => {
+    try {
+      const { data } = await supabase
+        .from('catalogo_m3u_live')
+        .select('tipo')
+        .eq('ativo', true);
+
+      if (data) {
+        const canais = data.filter(item => item.tipo === 'canal').length;
+        const filmes = data.filter(item => item.tipo === 'filme').length;
+        const series = data.filter(item => item.tipo === 'serie').length;
+        
+        setStats({ canais, filmes, series });
+      }
+    } catch (error) {
+      console.error('Erro ao carregar estatísticas:', error);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
       {/* Hero Section */}
       <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-black/70 to-black/30"></div>
+        {/* Background Images */}
+        {backgroundImages.length > 0 && (
+          <div className="absolute inset-0">
+            <img
+              src={backgroundImages[currentImageIndex]}
+              alt="Background"
+              className="w-full h-full object-cover opacity-30"
+            />
+          </div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-r from-black/80 to-black/50"></div>
         
         {/* Hero Background */}
         <div className="relative min-h-[80vh] flex items-center">
@@ -29,7 +101,7 @@ const Home = () => {
               </h1>
               
               <p className="text-xl md:text-2xl mb-8 text-gray-200 max-w-3xl mx-auto leading-relaxed">
-                A melhor plataforma de IPTV do Brasil com mais de <strong>50.000 canais</strong>, filmes e séries em <strong>alta qualidade</strong>
+                A melhor plataforma de IPTV do Brasil com mais de <strong>{stats.canais.toLocaleString()} canais</strong>, <strong>{stats.filmes.toLocaleString()} filmes</strong> e <strong>{stats.series.toLocaleString()} séries</strong> em <strong>alta qualidade</strong>
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
@@ -65,23 +137,23 @@ const Home = () => {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
                 <div className="flex flex-col items-center">
                   <Globe className="h-8 w-8 mb-2 text-blue-400" />
-                  <span className="text-lg font-bold">50K+</span>
+                  <span className="text-lg font-bold">{(stats.canais / 1000).toFixed(0)}K+</span>
                   <span className="text-sm text-gray-300">Canais</span>
                 </div>
                 <div className="flex flex-col items-center">
                   <Play className="h-8 w-8 mb-2 text-green-400" />
-                  <span className="text-lg font-bold">HD/4K</span>
-                  <span className="text-sm text-gray-300">Qualidade</span>
+                  <span className="text-lg font-bold">{(stats.filmes / 1000).toFixed(0)}K+</span>
+                  <span className="text-sm text-gray-300">Filmes</span>
                 </div>
                 <div className="flex flex-col items-center">
                   <Clock className="h-8 w-8 mb-2 text-yellow-400" />
-                  <span className="text-lg font-bold">24h</span>
-                  <span className="text-sm text-gray-300">Suporte</span>
+                  <span className="text-lg font-bold">{(stats.series / 1000).toFixed(0)}K+</span>
+                  <span className="text-sm text-gray-300">Séries</span>
                 </div>
                 <div className="flex flex-col items-center">
                   <Users className="h-8 w-8 mb-2 text-purple-400" />
-                  <span className="text-lg font-bold">10K+</span>
-                  <span className="text-sm text-gray-300">Clientes</span>
+                  <span className="text-lg font-bold">HD/4K</span>
+                  <span className="text-sm text-gray-300">Qualidade</span>
                 </div>
               </div>
             </div>
