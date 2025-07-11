@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Settings, Upload, Database, Users, Bell } from "lucide-react";
+import { Settings, Upload, Database, Users, Bell, Home, CreditCard } from "lucide-react";
 
 import CatalogUploader from "@/components/admin/CatalogUploader";
 import AppManager from "@/components/admin/AppManager";
@@ -17,6 +17,8 @@ import PopulateApps from "@/components/admin/PopulateApps";
 import NotificationManager from "@/components/admin/NotificationManager";
 import UserManager from "@/components/admin/UserManager";
 import EdgeFunctionTester from "@/components/admin/EdgeFunctionTester";
+import HomeManager from "@/components/admin/HomeManager";
+import PlansManager from "@/components/admin/PlansManager";
 
 const Admin = () => {
   const [user, setUser] = useState<any>(null);
@@ -205,8 +207,10 @@ const Admin = () => {
         </div>
 
         <Tabs defaultValue="configuracoes" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-7">
             <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
+            <TabsTrigger value="home">Home</TabsTrigger>
+            <TabsTrigger value="planos">Planos</TabsTrigger>
             <TabsTrigger value="catalogo">Catálogo</TabsTrigger>
             <TabsTrigger value="apps">Aplicativos</TabsTrigger>
             <TabsTrigger value="notificacoes">Notificações</TabsTrigger>
@@ -317,6 +321,34 @@ const Admin = () => {
                     </div>
                   </div>
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="home" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Home className="h-5 w-5" />
+                  Configurações da Home
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <HomeManager />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="planos" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CreditCard className="h-5 w-5" />
+                  Gerenciar Planos
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <PlansManager />
               </CardContent>
             </Card>
           </TabsContent>

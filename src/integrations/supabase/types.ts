@@ -14,6 +14,120 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_home_settings: {
+        Row: {
+          channel_carousel_enabled: boolean | null
+          created_at: string | null
+          feature_1_description: string | null
+          feature_1_title: string | null
+          feature_2_description: string | null
+          feature_2_title: string | null
+          feature_3_description: string | null
+          feature_3_title: string | null
+          featured_channels_ids: string[] | null
+          features_subtitle: string | null
+          features_title: string | null
+          hero_description: string | null
+          id: string
+          stats_canais_label: string | null
+          stats_filmes_label: string | null
+          stats_qualidade_descricao: string | null
+          stats_qualidade_label: string | null
+          stats_series_label: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          channel_carousel_enabled?: boolean | null
+          created_at?: string | null
+          feature_1_description?: string | null
+          feature_1_title?: string | null
+          feature_2_description?: string | null
+          feature_2_title?: string | null
+          feature_3_description?: string | null
+          feature_3_title?: string | null
+          featured_channels_ids?: string[] | null
+          features_subtitle?: string | null
+          features_title?: string | null
+          hero_description?: string | null
+          id?: string
+          stats_canais_label?: string | null
+          stats_filmes_label?: string | null
+          stats_qualidade_descricao?: string | null
+          stats_qualidade_label?: string | null
+          stats_series_label?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          channel_carousel_enabled?: boolean | null
+          created_at?: string | null
+          feature_1_description?: string | null
+          feature_1_title?: string | null
+          feature_2_description?: string | null
+          feature_2_title?: string | null
+          feature_3_description?: string | null
+          feature_3_title?: string | null
+          featured_channels_ids?: string[] | null
+          features_subtitle?: string | null
+          features_title?: string | null
+          hero_description?: string | null
+          id?: string
+          stats_canais_label?: string | null
+          stats_filmes_label?: string | null
+          stats_qualidade_descricao?: string | null
+          stats_qualidade_label?: string | null
+          stats_series_label?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      admin_plans: {
+        Row: {
+          created_at: string | null
+          duration_months: number
+          features: string[] | null
+          id: string
+          is_active: boolean | null
+          is_popular: boolean | null
+          name: string
+          order_position: number | null
+          original_price: number | null
+          price: number
+          savings: number | null
+          updated_at: string | null
+          whatsapp_message: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          duration_months: number
+          features?: string[] | null
+          id?: string
+          is_active?: boolean | null
+          is_popular?: boolean | null
+          name: string
+          order_position?: number | null
+          original_price?: number | null
+          price: number
+          savings?: number | null
+          updated_at?: string | null
+          whatsapp_message?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          duration_months?: number
+          features?: string[] | null
+          id?: string
+          is_active?: boolean | null
+          is_popular?: boolean | null
+          name?: string
+          order_position?: number | null
+          original_price?: number | null
+          price?: number
+          savings?: number | null
+          updated_at?: string | null
+          whatsapp_message?: string | null
+        }
+        Relationships: []
+      }
       admin_settings: {
         Row: {
           created_at: string | null

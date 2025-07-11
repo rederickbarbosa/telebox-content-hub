@@ -4,16 +4,21 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle, Star, Play, Clock, Users, Globe } from "lucide-react";
 import ChannelCarousel from "@/components/home/ChannelCarousel";
+import TrendingMovies from "@/components/home/TrendingMovies";
 import { supabase } from "@/integrations/supabase/client";
 
 const Home = () => {
   const [backgroundImages, setBackgroundImages] = useState<string[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [stats, setStats] = useState({ canais: 50000, filmes: 20000, series: 10000 });
+  const [settings, setSettings] = useState<any>(null);
+  const [plans, setPlans] = useState<any[]>([]);
 
   useEffect(() => {
     loadBackgroundImages();
     loadRealStats();
+    loadHomeSettings();
+    loadPlans();
     
     // Trocar imagem de fundo a cada 5 segundos
     const interval = setInterval(() => {
@@ -68,6 +73,38 @@ const Home = () => {
     }
   };
 
+  const loadHomeSettings = async () => {
+    try {
+      const { data } = await supabase
+        .from('admin_home_settings')
+        .select('*')
+        .limit(1)
+        .single();
+
+      if (data) {
+        setSettings(data);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar configurações da home:', error);
+    }
+  };
+
+  const loadPlans = async () => {
+    try {
+      const { data } = await supabase
+        .from('admin_plans')
+        .select('*')
+        .eq('is_active', true)
+        .order('order_position');
+
+      if (data) {
+        setPlans(data);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar planos:', error);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900">
       {/* Hero Section */}
@@ -101,7 +138,14 @@ const Home = () => {
               </h1>
               
               <p className="text-xl md:text-2xl mb-8 text-gray-200 max-w-3xl mx-auto leading-relaxed">
-                A melhor plataforma de IPTV do Brasil com mais de <strong>{stats.canais.toLocaleString()} canais</strong>, <strong>{stats.filmes.toLocaleString()} filmes</strong> e <strong>{stats.series.toLocaleString()} séries</strong> em <strong>alta qualidade</strong>
+                {settings?.hero_description ? 
+                  settings.hero_description
+                    .replace('{canais}', stats.canais.toLocaleString())
+                    .replace('{filmes}', stats.filmes.toLocaleString())
+                    .replace('{series}', stats.series.toLocaleString())
+                  : 
+                  `A melhor plataforma de IPTV do Brasil com mais de ${stats.canais.toLocaleString()} canais, ${stats.filmes.toLocaleString()} filmes e ${stats.series.toLocaleString()} séries em alta qualidade`
+                }
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4 justify-center mb-12">
@@ -138,22 +182,22 @@ const Home = () => {
                 <div className="flex flex-col items-center">
                   <Globe className="h-8 w-8 mb-2 text-blue-400" />
                   <span className="text-lg font-bold">{(stats.canais / 1000).toFixed(0)}K+</span>
-                  <span className="text-sm text-gray-300">Canais</span>
+                  <span className="text-sm text-gray-300">{settings?.stats_canais_label || 'Canais'}</span>
                 </div>
                 <div className="flex flex-col items-center">
                   <Play className="h-8 w-8 mb-2 text-green-400" />
                   <span className="text-lg font-bold">{(stats.filmes / 1000).toFixed(0)}K+</span>
-                  <span className="text-sm text-gray-300">Filmes</span>
+                  <span className="text-sm text-gray-300">{settings?.stats_filmes_label || 'Filmes'}</span>
                 </div>
                 <div className="flex flex-col items-center">
                   <Clock className="h-8 w-8 mb-2 text-yellow-400" />
                   <span className="text-lg font-bold">{(stats.series / 1000).toFixed(0)}K+</span>
-                  <span className="text-sm text-gray-300">Séries</span>
+                  <span className="text-sm text-gray-300">{settings?.stats_series_label || 'Séries'}</span>
                 </div>
                 <div className="flex flex-col items-center">
                   <Users className="h-8 w-8 mb-2 text-purple-400" />
-                  <span className="text-lg font-bold">HD/4K</span>
-                  <span className="text-sm text-gray-300">Qualidade</span>
+                  <span className="text-lg font-bold">{settings?.stats_qualidade_label || 'HD/4K'}</span>
+                  <span className="text-sm text-gray-300">{settings?.stats_qualidade_descricao || 'Qualidade'}</span>
                 </div>
               </div>
             </div>
@@ -169,152 +213,90 @@ const Home = () => {
               Escolha seu Plano
             </h2>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Todos os planos incluem acesso completo ao catálogo, suporte 24h e apps gratuitos
+              Todos os planos incluem acesso completo ao catálogo e apps gratuitos
             </p>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            {/* Plano 1 Mês - Popular */}
-            <div className="relative bg-gradient-to-br from-blue-600 to-purple-700 rounded-2xl p-8 text-white shadow-2xl transform hover:scale-105 transition-all duration-300">
-              <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-                <Badge className="bg-yellow-400 text-black font-bold px-4 py-1 text-sm flex items-center gap-1">
-                  <Star className="h-3 w-3" />
-                  Mais Popular
-                </Badge>
-              </div>
+            {plans.map((plan) => {
+              const isPopular = plan.is_popular;
               
-              <div className="text-center">
-                <h3 className="text-2xl font-bold mb-4">1 Mês</h3>
-                <div className="mb-6">
-                  <span className="text-5xl font-bold">R$ 30</span>
-                  <span className="text-lg">/mês</span>
-                </div>
-                <ul className="space-y-3 mb-8">
-                  <li className="flex items-center">
-                    <CheckCircle className="h-5 w-5 mr-3 text-green-400" />
-                    <span>Acesso completo</span>
-                  </li>
-                  <li className="flex items-center">
-                    <CheckCircle className="h-5 w-5 mr-3 text-green-400" />
-                    <span>Todos os canais e filmes</span>
-                  </li>
-                  <li className="flex items-center">
-                    <CheckCircle className="h-5 w-5 mr-3 text-green-400" />
-                    <span>Suporte 24h</span>
-                  </li>
-                  <li className="flex items-center">
-                    <CheckCircle className="h-5 w-5 mr-3 text-green-400" />
-                    <span>Apps gratuitos</span>
-                  </li>
-                </ul>
-                <a
-                  href={`https://wa.me/5511911837288?text=Olá! Quero contratar o plano de 1 mês por R$ 30,00.`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block"
+              return (
+                <div 
+                  key={plan.id}
+                  className={`relative rounded-2xl p-8 shadow-2xl transform hover:scale-105 transition-all duration-300 ${
+                    isPopular 
+                      ? 'bg-gradient-to-br from-blue-600 to-purple-700 text-white' 
+                      : 'bg-white border-2 border-gray-200 hover:border-blue-300'
+                  }`}
                 >
-                  <Button className="w-full bg-yellow-400 hover:bg-yellow-300 text-black font-bold py-3 text-lg rounded-full">
-                    Contratar Agora
-                  </Button>
-                </a>
-              </div>
-            </div>
-
-            {/* Plano 2 Meses */}
-            <div className="bg-white rounded-2xl p-8 shadow-xl border-2 border-gray-200 hover:border-blue-300 transition-all duration-300">
-              <div className="text-center">
-                <h3 className="text-2xl font-bold text-gray-800 mb-4">2 Meses</h3>
-                <div className="mb-6">
-                  <span className="text-5xl font-bold text-gray-800">R$ 55</span>
-                  <span className="text-lg text-gray-600">/2 meses</span>
-                  <div className="text-sm text-green-600 font-medium">Economize R$ 5</div>
+                  {isPopular && (
+                    <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                      <Badge className="bg-yellow-400 text-black font-bold px-4 py-1 text-sm flex items-center gap-1">
+                        <Star className="h-3 w-3" />
+                        Mais Popular
+                      </Badge>
+                    </div>
+                  )}
+                  
+                  <div className="text-center">
+                    <h3 className={`text-2xl font-bold mb-4 ${isPopular ? 'text-white' : 'text-gray-800'}`}>
+                      {plan.name}
+                    </h3>
+                    <div className="mb-6">
+                      <span className={`text-5xl font-bold ${isPopular ? 'text-white' : 'text-gray-800'}`}>
+                        R$ {plan.price.toFixed(0)}
+                      </span>
+                      <span className={`text-lg ${isPopular ? 'text-white' : 'text-gray-600'}`}>
+                        /{plan.duration_months > 1 ? `${plan.duration_months} meses` : 'mês'}
+                      </span>
+                      {plan.savings && (
+                        <div className={`text-sm font-medium mt-2 ${isPopular ? 'text-green-200' : 'text-green-600'}`}>
+                          Economize R$ {plan.savings.toFixed(0)}
+                        </div>
+                      )}
+                    </div>
+                    <ul className="space-y-3 mb-8">
+                      {plan.features.map((feature: string, index: number) => (
+                        <li key={index} className="flex items-center">
+                          <CheckCircle className={`h-5 w-5 mr-3 ${isPopular ? 'text-green-400' : 'text-green-500'}`} />
+                          <span className={isPopular ? 'text-white' : 'text-gray-700'}>{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    <a
+                      href={`https://wa.me/5511911837288?text=${encodeURIComponent(plan.whatsapp_message || `Olá! Quero contratar o plano ${plan.name}.`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block"
+                    >
+                      <Button className="w-full bg-yellow-400 hover:bg-yellow-300 text-black font-bold py-3 text-lg rounded-full">
+                        Contratar Agora
+                      </Button>
+                    </a>
+                  </div>
                 </div>
-                <ul className="space-y-3 mb-8">
-                  <li className="flex items-center">
-                    <CheckCircle className="h-5 w-5 mr-3 text-green-500" />
-                    <span className="text-gray-700">Acesso completo</span>
-                  </li>
-                  <li className="flex items-center">
-                    <CheckCircle className="h-5 w-5 mr-3 text-green-500" />
-                    <span className="text-gray-700">Todos os canais e filmes</span>
-                  </li>
-                  <li className="flex items-center">
-                    <CheckCircle className="h-5 w-5 mr-3 text-green-500" />
-                    <span className="text-gray-700">Suporte prioritário</span>
-                  </li>
-                  <li className="flex items-center">
-                    <CheckCircle className="h-5 w-5 mr-3 text-green-500" />
-                    <span className="text-gray-700">Apps gratuitos</span>
-                  </li>
-                </ul>
-                <a
-                  href={`https://wa.me/5511911837288?text=Olá! Quero contratar o plano de 2 meses por R$ 55,00.`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block"
-                >
-                  <Button className="w-full bg-yellow-400 hover:bg-yellow-300 text-black font-bold py-3 text-lg rounded-full">
-                    Contratar Agora
-                  </Button>
-                </a>
-              </div>
-            </div>
-
-            {/* Plano 3 Meses */}
-            <div className="bg-white rounded-2xl p-8 shadow-xl border-2 border-gray-200 hover:border-blue-300 transition-all duration-300">
-              <div className="text-center">
-                <h3 className="text-2xl font-bold text-gray-800 mb-4">3 Meses</h3>
-                <div className="mb-6">
-                  <span className="text-5xl font-bold text-gray-800">R$ 80</span>
-                  <span className="text-lg text-gray-600">/3 meses</span>
-                  <div className="text-sm text-green-600 font-medium">Economize R$ 10</div>
-                </div>
-                <ul className="space-y-3 mb-8">
-                  <li className="flex items-center">
-                    <CheckCircle className="h-5 w-5 mr-3 text-green-500" />
-                    <span className="text-gray-700">Acesso completo</span>
-                  </li>
-                  <li className="flex items-center">
-                    <CheckCircle className="h-5 w-5 mr-3 text-green-500" />
-                    <span className="text-gray-700">Todos os canais e filmes</span>
-                  </li>
-                  <li className="flex items-center">
-                    <CheckCircle className="h-5 w-5 mr-3 text-green-500" />
-                    <span className="text-gray-700">Suporte VIP</span>
-                  </li>
-                  <li className="flex items-center">
-                    <CheckCircle className="h-5 w-5 mr-3 text-green-500" />
-                    <span className="text-gray-700">Apps gratuitos</span>
-                  </li>
-                </ul>
-                <a
-                  href={`https://wa.me/5511911837288?text=Olá! Quero contratar o plano de 3 meses por R$ 80,00.`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block"
-                >
-                  <Button className="w-full bg-yellow-400 hover:bg-yellow-300 text-black font-bold py-3 text-lg rounded-full">
-                    Contratar Agora
-                  </Button>
-                </a>
-              </div>
-            </div>
+              );
+            })}
           </div>
         </div>
       </div>
 
+      {/* Trending Movies */}
+      <TrendingMovies />
+
       {/* Channel Carousel */}
-      <ChannelCarousel />
+      {settings?.channel_carousel_enabled !== false && <ChannelCarousel />}
 
       {/* Features Section */}
       <div className="py-20 bg-gray-50">
         <div className="container mx-auto px-4">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-800 mb-4">
-              Por que escolher o TELEBOX?
+              {settings?.features_title || 'Por que escolher o TELEBOX?'}
             </h2>
             <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-              Tecnologia de ponta e qualidade incomparável
+              {settings?.features_subtitle || 'Tecnologia de ponta e qualidade incomparável'}
             </p>
           </div>
 
@@ -323,9 +305,11 @@ const Home = () => {
               <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Globe className="h-8 w-8 text-blue-600" />
               </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">Cobertura Global</h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">
+                {settings?.feature_1_title || 'Cobertura Global'}
+              </h3>
               <p className="text-gray-600">
-                Canais de todo o mundo com transmissão em tempo real
+                {settings?.feature_1_description || 'Canais de todo o mundo com transmissão em tempo real'}
               </p>
             </div>
 
@@ -333,9 +317,11 @@ const Home = () => {
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Play className="h-8 w-8 text-green-600" />
               </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">Qualidade 4K</h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">
+                {settings?.feature_2_title || 'Qualidade 4K'}
+              </h3>
               <p className="text-gray-600">
-                Transmissão em ultra alta definição sem travamentos
+                {settings?.feature_2_description || 'Transmissão em ultra alta definição sem travamentos'}
               </p>
             </div>
 
@@ -343,9 +329,11 @@ const Home = () => {
               <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Clock className="h-8 w-8 text-purple-600" />
               </div>
-              <h3 className="text-xl font-bold text-gray-800 mb-2">Suporte 24h</h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-2">
+                {settings?.feature_3_title || 'Disponibilidade Total'}
+              </h3>
               <p className="text-gray-600">
-                Atendimento especializado disponível todos os dias
+                {settings?.feature_3_description || 'Acesso completo ao catálogo 24 horas por dia'}
               </p>
             </div>
           </div>

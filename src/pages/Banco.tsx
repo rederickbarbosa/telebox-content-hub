@@ -14,13 +14,16 @@ interface Conteudo {
   id: string;
   nome: string;
   tipo: string;
-  generos: string[];
-  ano: number;
-  poster_url: string;
-  backdrop_url: string;
-  descricao: string;
-  classificacao: number;
-  tmdb_id: number;
+  generos?: string[];
+  grupo?: string;
+  ano?: number;
+  poster_url?: string;
+  backdrop_url?: string;
+  descricao?: string;
+  classificacao?: number;
+  tmdb_id?: number;
+  logo?: string;
+  qualidade?: string;
 }
 
 interface UserStatus {
@@ -386,10 +389,10 @@ const Banco = () => {
             return (
               <Card key={conteudo.id} className="shadow-telebox-card hover:shadow-telebox-hero transition-shadow">
                 <div className="relative overflow-hidden rounded-t-lg">
-                  <img
-                    src={conteudo.poster_url || "/placeholder.svg"}
-                    alt={conteudo.nome}
-                    className="w-full h-64 object-cover"
+                   <img
+                     src={conteudo.poster_url || conteudo.logo || "/placeholder.svg"}
+                     alt={conteudo.nome}
+                     className="w-full h-64 object-cover"
                   />
                   <div className="absolute top-2 left-2">
                     <Badge variant="secondary" className="bg-black/70 text-white">
