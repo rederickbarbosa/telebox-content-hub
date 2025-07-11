@@ -63,6 +63,7 @@ const Catalogo = () => {
 
   const fetchConteudos = async () => {
     try {
+      // Buscar TODOS os conteúdos sem limite
       const { data, error } = await supabase
         .from('catalogo_m3u_live')
         .select('*')

@@ -76,11 +76,11 @@ const Banco = () => {
     try {
       setLoading(true);
       
-      // Buscar conteúdos
+      // Buscar conteúdos da tabela catalogo_m3u_live
       const { data: conteudosData, error: conteudosError } = await supabase
-        .from('conteudos')
+        .from('catalogo_m3u_live')
         .select('*')
-        .eq('disponivel', true)
+        .eq('ativo', true)
         .in('tipo', ['filme', 'serie'])
         .order('nome');
 
