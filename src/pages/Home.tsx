@@ -56,18 +56,30 @@ const Home = () => {
 
   const loadRealStats = async () => {
     try {
-      const { data } = await supabase
-        .from('catalogo_m3u_live')
-        .select('tipo')
-        .eq('ativo', true);
+      // Buscar estatísticas reais usando count
+      const [canaisResult, filmesResult, seriesResult] = await Promise.all([
+        supabase
+          .from('catalogo_m3u_live')
+          .select('*', { count: 'exact', head: true })
+          .eq('ativo', true)
+          .eq('tipo', 'canal'),
+        supabase
+          .from('catalogo_m3u_live')
+          .select('*', { count: 'exact', head: true })
+          .eq('ativo', true)
+          .eq('tipo', 'filme'),
+        supabase
+          .from('catalogo_m3u_live')
+          .select('*', { count: 'exact', head: true })
+          .eq('ativo', true)
+          .eq('tipo', 'serie')
+      ]);
 
-      if (data) {
-        const canais = data.filter(item => item.tipo === 'canal').length;
-        const filmes = data.filter(item => item.tipo === 'filme').length;
-        const series = data.filter(item => item.tipo === 'serie').length;
-        
-        setStats({ canais, filmes, series });
-      }
+      const canais = canaisResult.count || 0;
+      const filmes = filmesResult.count || 0;
+      const series = seriesResult.count || 0;
+      
+      setStats({ canais, filmes, series });
     } catch (error) {
       console.error('Erro ao carregar estatísticas:', error);
     }
@@ -180,23 +192,23 @@ const Home = () => {
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
                 <div className="flex flex-col items-center">
-                  <Globe className="h-8 w-8 mb-2 text-blue-400" />
-                  <span className="text-lg font-bold">{(stats.canais / 1000).toFixed(0)}K+</span>
+                  <Globe className="h-8 w-8 mb-2 text-telebox-blue" />
+                  <span className="text-lg font-bold text-white">{stats.canais > 1000 ? `${(stats.canais / 1000).toFixed(0)}K+` : stats.canais.toLocaleString()}</span>
                   <span className="text-sm text-gray-300">{settings?.stats_canais_label || 'Canais'}</span>
                 </div>
                 <div className="flex flex-col items-center">
                   <Play className="h-8 w-8 mb-2 text-green-400" />
-                  <span className="text-lg font-bold">{(stats.filmes / 1000).toFixed(0)}K+</span>
+                  <span className="text-lg font-bold text-white">{stats.filmes > 1000 ? `${(stats.filmes / 1000).toFixed(0)}K+` : stats.filmes.toLocaleString()}</span>
                   <span className="text-sm text-gray-300">{settings?.stats_filmes_label || 'Filmes'}</span>
                 </div>
                 <div className="flex flex-col items-center">
                   <Clock className="h-8 w-8 mb-2 text-yellow-400" />
-                  <span className="text-lg font-bold">{(stats.series / 1000).toFixed(0)}K+</span>
+                  <span className="text-lg font-bold text-white">{stats.series > 1000 ? `${(stats.series / 1000).toFixed(0)}K+` : stats.series.toLocaleString()}</span>
                   <span className="text-sm text-gray-300">{settings?.stats_series_label || 'Séries'}</span>
                 </div>
                 <div className="flex flex-col items-center">
                   <Users className="h-8 w-8 mb-2 text-purple-400" />
-                  <span className="text-lg font-bold">{settings?.stats_qualidade_label || 'HD/4K'}</span>
+                  <span className="text-lg font-bold text-white">{settings?.stats_qualidade_label || 'HD/4K'}</span>
                   <span className="text-sm text-gray-300">{settings?.stats_qualidade_descricao || 'Qualidade'}</span>
                 </div>
               </div>

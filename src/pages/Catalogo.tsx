@@ -63,23 +63,33 @@ const Catalogo = () => {
 
   const fetchConteudos = async () => {
     try {
-      // Buscar TODOS os conteúdos sem limite
-      const { data, error } = await supabase
-        .from('catalogo_m3u_live')
-        .select('*')
-        .eq('ativo', true)
-        .order('nome');
+      // Buscar TODOS os conteúdos - usar paginação para grandes volumes
+      let allData: any[] = [];
+      let hasMore = true;
+      let page = 0;
+      const pageSize = 10000;
 
-      if (error) {
-        console.error('Erro ao buscar conteúdos:', error);
-        toast({
-          title: "Erro ao carregar catálogo",
-          description: error.message,
-          variant: "destructive",
-        });
-      } else if (data) {
-        setConteudos(data);
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('catalogo_m3u_live')
+          .select('*')
+          .eq('ativo', true)
+          .order('nome')
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          allData = [...allData, ...data];
+          hasMore = data.length === pageSize;
+          page++;
+        } else {
+          hasMore = false;
+        }
       }
+
+      setConteudos(allData);
+      console.log(`Carregados ${allData.length} conteúdos`);
     } catch (error) {
       console.error('Erro ao buscar conteúdos:', error);
       toast({

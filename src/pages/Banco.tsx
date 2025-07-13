@@ -79,15 +79,33 @@ const Banco = () => {
     try {
       setLoading(true);
       
-      // Buscar conteúdos da tabela catalogo_m3u_live
-      const { data: conteudosData, error: conteudosError } = await supabase
-        .from('catalogo_m3u_live')
-        .select('*')
-        .eq('ativo', true)
-        .in('tipo', ['filme', 'serie'])
-        .order('nome');
+      // Buscar TODOS os conteúdos - usar paginação para grandes volumes
+      let allConteudosData: any[] = [];
+      let hasMore = true;
+      let page = 0;
+      const pageSize = 10000;
 
-      if (conteudosError) throw conteudosError;
+      while (hasMore) {
+        const { data: conteudosPage, error: conteudosError } = await supabase
+          .from('catalogo_m3u_live')
+          .select('*')
+          .eq('ativo', true)
+          .in('tipo', ['filme', 'serie'])
+          .order('nome')
+          .range(page * pageSize, (page + 1) * pageSize - 1);
+
+        if (conteudosError) throw conteudosError;
+        
+        if (conteudosPage && conteudosPage.length > 0) {
+          allConteudosData = [...allConteudosData, ...conteudosPage];
+          hasMore = conteudosPage.length === pageSize;
+          page++;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      const conteudosData = allConteudosData;
 
       // Buscar status do usuário
       const { data: statusData, error: statusError } = await supabase

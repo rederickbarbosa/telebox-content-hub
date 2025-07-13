@@ -21,16 +21,25 @@ const ChannelCarousel = () => {
 
   const loadPopularChannels = async () => {
     try {
-      // Get popular channels (canais) with logos, grouped by name to avoid duplicates
+      // Primeiro, buscar as configurações de canais selecionados pelo admin
+      const { data: homeSettings } = await supabase
+        .from('admin_home_settings')
+        .select('featured_channels_ids, channel_carousel_enabled')
+        .limit(1)
+        .single();
+
+      if (!homeSettings?.channel_carousel_enabled || !homeSettings?.featured_channels_ids?.length) {
+        setPopularChannels([]);
+        return;
+      }
+
+      // Buscar apenas os canais selecionados pelo admin
       const { data, error } = await supabase
         .from('catalogo_m3u_live')
         .select('id, nome, logo, grupo, tipo')
         .eq('ativo', true)
         .eq('tipo', 'canal')
-        .not('logo', 'is', null)
-        .neq('logo', '')
-        .order('nome')
-        .limit(100);
+        .in('id', homeSettings.featured_channels_ids);
 
       if (error) {
         console.error('Error loading channels:', error);
@@ -38,17 +47,7 @@ const ChannelCarousel = () => {
       }
 
       if (data) {
-        // Remove duplicates by channel name, keep only unique channels
-        const uniqueChannels = data.reduce((acc: Channel[], current) => {
-          const existing = acc.find(ch => ch.nome.toLowerCase().trim() === current.nome.toLowerCase().trim());
-          if (!existing) {
-            acc.push(current);
-          }
-          return acc;
-        }, []);
-
-        // Take first 20 channels
-        setPopularChannels(uniqueChannels.slice(0, 20));
+        setPopularChannels(data);
       }
     } catch (error) {
       console.error('Error loading popular channels:', error);
@@ -81,7 +80,7 @@ const ChannelCarousel = () => {
           Canais Populares
         </h2>
         <p className="text-gray-300 text-center mb-8">
-          Confira os canais mais assistidos e acesse a programação completa
+          Confira os canais em destaque e acesse a programação completa
         </p>
         
         <div className="relative max-w-6xl mx-auto">

@@ -47,11 +47,30 @@ const TrendingMovies = () => {
       
       if (trendingData.results) {
         // Buscar quais desses conteúdos estão disponíveis no nosso catálogo
-        const { data: catalogData } = await supabase
-          .from('catalogo_m3u_live')
-          .select('id, nome, tipo, logo')
-          .eq('ativo', true)
-          .in('tipo', ['filme', 'serie']);
+        // Usar paginação para buscar todos
+        let allCatalogData: any[] = [];
+        let hasMore = true;
+        let page = 0;
+        const pageSize = 10000;
+
+        while (hasMore) {
+          const { data: catalogPage } = await supabase
+            .from('catalogo_m3u_live')
+            .select('id, nome, tipo, logo')
+            .eq('ativo', true)
+            .in('tipo', ['filme', 'serie'])
+            .range(page * pageSize, (page + 1) * pageSize - 1);
+
+          if (catalogPage && catalogPage.length > 0) {
+            allCatalogData = [...allCatalogData, ...catalogPage];
+            hasMore = catalogPage.length === pageSize;
+            page++;
+          } else {
+            hasMore = false;
+          }
+        }
+
+        const catalogData = allCatalogData;
 
         if (catalogData) {
           // Combinar dados do TMDB com nosso catálogo
