@@ -167,8 +167,9 @@ const Home = () => {
                   rel="noopener noreferrer"
                 >
                   <Button 
-                    size="lg" 
-                    className="bg-yellow-400 hover:bg-yellow-300 text-black font-bold px-8 py-4 text-lg rounded-full shadow-2xl hover:shadow-yellow-400/25 transition-all duration-300 transform hover:scale-105"
+                    variant="whatsapp"
+                    size="xl" 
+                    className="px-8 py-4 text-lg rounded-full shadow-2xl transition-all duration-300 transform hover:scale-105"
                   >
                     <Play className="mr-2 h-5 w-5" />
                     Contratar Agora
@@ -181,9 +182,9 @@ const Home = () => {
                   rel="noopener noreferrer"
                 >
                   <Button 
-                    size="lg" 
-                    variant="outline" 
-                    className="border-2 border-white text-white hover:bg-white hover:text-black font-bold px-8 py-4 text-lg rounded-full shadow-2xl transition-all duration-300 transform hover:scale-105"
+                    variant="premium"
+                    size="xl" 
+                    className="px-8 py-4 text-lg rounded-full shadow-2xl transition-all duration-300 transform hover:scale-105"
                   >
                     Teste Grátis
                   </Button>
@@ -194,22 +195,22 @@ const Home = () => {
                 <div className="flex flex-col items-center">
                   <Globe className="h-8 w-8 mb-2 text-telebox-blue" />
                   <span className="text-lg font-bold text-white">{stats.canais > 1000 ? `${(stats.canais / 1000).toFixed(0)}K+` : stats.canais.toLocaleString()}</span>
-                  <span className="text-sm text-gray-300">{settings?.stats_canais_label || 'Canais'}</span>
+                  <span className="text-sm text-telebox-gray-light">{settings?.stats_canais_label || 'Canais'}</span>
                 </div>
                 <div className="flex flex-col items-center">
                   <Play className="h-8 w-8 mb-2 text-green-400" />
                   <span className="text-lg font-bold text-white">{stats.filmes > 1000 ? `${(stats.filmes / 1000).toFixed(0)}K+` : stats.filmes.toLocaleString()}</span>
-                  <span className="text-sm text-gray-300">{settings?.stats_filmes_label || 'Filmes'}</span>
+                  <span className="text-sm text-telebox-gray-light">{settings?.stats_filmes_label || 'Filmes'}</span>
                 </div>
                 <div className="flex flex-col items-center">
                   <Clock className="h-8 w-8 mb-2 text-yellow-400" />
                   <span className="text-lg font-bold text-white">{stats.series > 1000 ? `${(stats.series / 1000).toFixed(0)}K+` : stats.series.toLocaleString()}</span>
-                  <span className="text-sm text-gray-300">{settings?.stats_series_label || 'Séries'}</span>
+                  <span className="text-sm text-telebox-gray-light">{settings?.stats_series_label || 'Séries'}</span>
                 </div>
                 <div className="flex flex-col items-center">
                   <Users className="h-8 w-8 mb-2 text-purple-400" />
                   <span className="text-lg font-bold text-white">{settings?.stats_qualidade_label || 'HD/4K'}</span>
-                  <span className="text-sm text-gray-300">{settings?.stats_qualidade_descricao || 'Qualidade'}</span>
+                  <span className="text-sm text-telebox-gray-light">{settings?.stats_qualidade_descricao || 'Qualidade'}</span>
                 </div>
               </div>
             </div>
@@ -282,7 +283,10 @@ const Home = () => {
                       rel="noopener noreferrer"
                       className="block"
                     >
-                      <Button className="w-full bg-yellow-400 hover:bg-yellow-300 text-black font-bold py-3 text-lg rounded-full">
+                      <Button 
+                        variant="whatsapp"
+                        className="w-full py-3 text-lg rounded-full"
+                      >
                         Contratar Agora
                       </Button>
                     </a>
