@@ -130,29 +130,38 @@ const PlansManager = () => {
     }
   };
 
-  const setPopularPlan = async (planId: string) => {
+  const togglePopularPlan = async (planId: string, currentIsPopular: boolean) => {
     try {
-      // Remover popular de todos os planos
-      await supabase
-        .from('admin_plans')
-        .update({ is_popular: false })
-        .neq('id', '');
+      if (currentIsPopular) {
+        // Se já é popular, desmarcar
+        const { error } = await supabase
+          .from('admin_plans')
+          .update({ is_popular: false })
+          .eq('id', planId);
 
-      // Definir como popular apenas o selecionado
-      const { error } = await supabase
-        .from('admin_plans')
-        .update({ is_popular: true })
-        .eq('id', planId);
+        if (error) throw error;
+      } else {
+        // Se não é popular, remover popular de todos os outros e marcar este
+        await supabase
+          .from('admin_plans')
+          .update({ is_popular: false })
+          .neq('id', '');
 
-      if (error) throw error;
+        const { error } = await supabase
+          .from('admin_plans')
+          .update({ is_popular: true })
+          .eq('id', planId);
+
+        if (error) throw error;
+      }
       
       await fetchPlans();
       toast({
         title: "Sucesso",
-        description: "Plano popular atualizado.",
+        description: currentIsPopular ? "Plano desmarcado como popular." : "Plano marcado como popular.",
       });
     } catch (error) {
-      console.error('Erro ao definir plano popular:', error);
+      console.error('Erro ao alterar plano popular:', error);
       toast({
         title: "Erro",
         description: "Não foi possível atualizar o plano popular.",
@@ -245,11 +254,12 @@ const PlansManager = () => {
                 <div className="flex gap-2">
                   <Button
                     size="sm"
-                    variant="outline"
-                    onClick={() => setPopularPlan(plan.id)}
-                    disabled={plan.is_popular}
+                    variant={plan.is_popular ? "default" : "outline"}
+                    onClick={() => togglePopularPlan(plan.id, plan.is_popular)}
+                    className={plan.is_popular ? "bg-yellow-500 hover:bg-yellow-600 text-black" : ""}
                   >
-                    Marcar como Popular
+                    <Star className={`h-4 w-4 mr-1 ${plan.is_popular ? "fill-current" : ""}`} />
+                    {plan.is_popular ? "Desmarcar Popular" : "Marcar como Popular"}
                   </Button>
                   <Button
                     size="sm"
