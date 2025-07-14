@@ -73,26 +73,46 @@ const TrendingMovies = () => {
         const catalogData = allCatalogData;
 
         if (catalogData) {
-          // Combinar dados do TMDB com nosso catálogo
+          // Combinar dados do TMDB com nosso catálogo - APENAS conteúdo que está no catálogo
           const matchedContent: TrendingContent[] = [];
           
-          for (const tmdbItem of trendingData.results.slice(0, 8)) {
-            const title = tmdbItem.title || tmdbItem.name;
-            const foundItem = catalogData.find(item => 
-              item.nome.toLowerCase().includes(title.toLowerCase().split(' ')[0]) ||
-              title.toLowerCase().includes(item.nome.toLowerCase().split(' ')[0])
-            );
-
-            if (foundItem) {
-              matchedContent.push({
-                ...foundItem,
-                tmdb_data: {
-                  poster_path: tmdbItem.poster_path,
-                  vote_average: tmdbItem.vote_average,
-                  release_date: tmdbItem.release_date || tmdbItem.first_air_date,
-                  overview: tmdbItem.overview
+          // Primeiro, vamos pegar os itens do nosso catálogo que têm tmdb_id ou que podemos fazer match
+          for (const catalogItem of catalogData.slice(0, 12)) {
+            // Buscar no TMDB apenas se o item do catálogo ainda não tem dados TMDB
+            if (!catalogItem.logo || !catalogItem.logo.includes('tmdb.org')) {
+              try {
+                const searchQuery = encodeURIComponent(catalogItem.nome);
+                const searchResponse = await fetch(
+                  `https://api.themoviedb.org/3/search/${catalogItem.tipo === 'filme' ? 'movie' : 'tv'}?query=${searchQuery}&language=pt-BR`,
+                  {
+                    headers: {
+                      'Authorization': `Bearer ${TMDB_TOKEN}`,
+                      'Content-Type': 'application/json',
+                    },
+                  }
+                );
+                
+                const searchData = await searchResponse.json();
+                
+                if (searchData.results && searchData.results.length > 0) {
+                  const bestMatch = searchData.results[0];
+                  
+                  matchedContent.push({
+                    ...catalogItem,
+                    tmdb_data: {
+                      poster_path: bestMatch.poster_path,
+                      vote_average: bestMatch.vote_average,
+                      release_date: bestMatch.release_date || bestMatch.first_air_date,
+                      overview: bestMatch.overview
+                    }
+                  });
                 }
-              });
+              } catch (error) {
+                console.error(`Erro ao buscar dados TMDB para ${catalogItem.nome}:`, error);
+              }
+            } else {
+              // Se já tem logo do TMDB, usar como está
+              matchedContent.push(catalogItem);
             }
           }
 
