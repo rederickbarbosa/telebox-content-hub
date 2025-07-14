@@ -10,6 +10,7 @@ import { Search, Play, ExternalLink, Star, Calendar, Users } from "lucide-react"
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import SeriesModal from "@/components/catalog/SeriesModal";
+import ChannelModal from "@/components/catalog/ChannelModal";
 
 interface Conteudo {
   id: string;
@@ -24,6 +25,8 @@ interface Conteudo {
   serie_nome?: string;
   temporada?: number;
   episodio?: number;
+  // Estrutura canal agrupado
+  canal_nome?: string;
   // Dados TMDB carregados dinamicamente
   tmdb_data?: {
     poster_path?: string;
@@ -51,6 +54,8 @@ const Catalogo = () => {
   const [tmdbLoading, setTmdbLoading] = useState<{[key: string]: boolean}>({});
   const [selectedSeries, setSelectedSeries] = useState<string | null>(null);
   const [selectedSeriesData, setSelectedSeriesData] = useState<any>(null);
+  const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
+  const [selectedChannelData, setSelectedChannelData] = useState<any>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -105,13 +110,13 @@ const Catalogo = () => {
   const filterConteudos = () => {
     let filtered = conteudos;
 
-    // Para séries, agrupar por série base (sem temporada/episódio)
+    // Agrupar conteúdos baseado no tipo
     if (tipoFilter === "serie") {
+      // Para séries, agrupar por série base (sem temporada/episódio)
       const seriesGrouped = new Map();
       
       filtered.forEach(item => {
         if (item.tipo === 'serie') {
-          // Extrair nome base da série (remover S01E01, temporada, etc)
           const serieBase = extractSerieBaseName(item.nome);
           if (!seriesGrouped.has(serieBase)) {
             seriesGrouped.set(serieBase, {
@@ -124,17 +129,67 @@ const Catalogo = () => {
       });
       
       filtered = Array.from(seriesGrouped.values());
+    } else if (tipoFilter === "canal") {
+      // Para canais, agrupar por nome base (sem qualidade/região)
+      const canaisGrouped = new Map();
+      
+      filtered.forEach(item => {
+        if (item.tipo === 'canal') {
+          const canalBase = extractCanalBaseName(item.nome);
+          if (!canaisGrouped.has(canalBase)) {
+            canaisGrouped.set(canalBase, {
+              ...item,
+              nome: canalBase,
+              canal_nome: canalBase
+            });
+          }
+        }
+      });
+      
+      filtered = Array.from(canaisGrouped.values());
+    } else if (tipoFilter !== "todos") {
+      // Para filmes e outros tipos, filtrar normalmente
+      filtered = filtered.filter(item => item.tipo === tipoFilter);
     } else {
-      if (tipoFilter !== "todos") {
-        filtered = filtered.filter(item => item.tipo === tipoFilter);
-      }
+      // Para "todos", agrupar séries e canais, manter filmes individuais
+      const uniqueContent = new Map();
+      
+      filtered.forEach(item => {
+        let key = item.id;
+        let processedItem = item;
+        
+        if (item.tipo === 'serie') {
+          const serieBase = extractSerieBaseName(item.nome);
+          key = `serie_${serieBase}`;
+          processedItem = {
+            ...item,
+            nome: serieBase,
+            serie_nome: serieBase
+          };
+        } else if (item.tipo === 'canal') {
+          const canalBase = extractCanalBaseName(item.nome);
+          key = `canal_${canalBase}`;
+          processedItem = {
+            ...item,
+            nome: canalBase,
+            canal_nome: canalBase
+          };
+        }
+        
+        if (!uniqueContent.has(key)) {
+          uniqueContent.set(key, processedItem);
+        }
+      });
+      
+      filtered = Array.from(uniqueContent.values());
     }
 
     if (searchTerm) {
       filtered = filtered.filter(item =>
         item.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.grupo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.serie_nome && item.serie_nome.toLowerCase().includes(searchTerm.toLowerCase()))
+        (item.serie_nome && item.serie_nome.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (item.canal_nome && item.canal_nome.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
 
@@ -162,6 +217,19 @@ const Catalogo = () => {
       .replace(/\s*Episódio\s*\d+.*$/i, '')
       .replace(/\s*EP\s*\d+.*$/i, '')
       .replace(/\s*Ep\.\s*\d+.*$/i, '')
+      .trim();
+  };
+
+  // Função para extrair nome base do canal
+  const extractCanalBaseName = (nome: string): string => {
+    // Remove qualidade, região, números duplicados
+    return nome
+      .replace(/\s*\b(HD|FHD|4K|SD|H264|H265)\b.*$/i, '')
+      .replace(/\s*\b(BR|SP|RJ|MG|RS|PR|SC|BA|PE|CE|GO|DF|MT|MS|RO|AC|AM|AP|PA|RR|TO|AL|PB|PI|RN|SE|MA|ES)\b.*$/i, '')
+      .replace(/\s*\(\d+\).*$/i, '')
+      .replace(/\s*\[\d+\].*$/i, '')
+      .replace(/\s*-\s*\d+.*$/i, '')
+      .replace(/\s*\d+$/, '')
       .trim();
   };
 
@@ -341,6 +409,7 @@ const Catalogo = () => {
         {/* Grid de Conteúdos */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
           {filteredConteudos.map((conteudo) => {
+            // Tratamento especial para séries
             if (conteudo.tipo === 'serie') {
               return (
                 <Card 
@@ -393,6 +462,47 @@ const Catalogo = () => {
                           {new Date(conteudo.tmdb_data.release_date).getFullYear()}
                         </span>
                       )}
+                    </CardDescription>
+                  </CardHeader>
+                </Card>
+              );
+            }
+
+            // Tratamento especial para canais
+            if (conteudo.tipo === 'canal') {
+              return (
+                <Card 
+                  key={conteudo.id}
+                  className="cursor-pointer hover:shadow-telebox-hero transition-shadow group"
+                  onClick={() => {
+                    setSelectedChannel(conteudo.canal_nome || conteudo.nome);
+                    setSelectedChannelData(conteudo);
+                  }}
+                >
+                  <div className="relative overflow-hidden rounded-t-lg">
+                    <img
+                      src={conteudo.logo || "/placeholder.svg"}
+                      alt={conteudo.nome}
+                      className="w-full h-64 object-contain bg-gray-100 group-hover:scale-105 transition-transform"
+                      loading="lazy"
+                    />
+                    <div className="absolute top-2 left-2 flex flex-col gap-1">
+                      <Badge variant="secondary" className="bg-red-600 text-white text-xs">
+                        Canal
+                      </Badge>
+                      {conteudo.qualidade && (
+                        <Badge variant="secondary" className="bg-blue-600 text-white text-xs">
+                          {conteudo.qualidade}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <CardHeader className="p-3">
+                    <CardTitle className="text-sm font-semibold line-clamp-2">
+                      {conteudo.canal_nome || conteudo.nome}
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      {conteudo.grupo}
                     </CardDescription>
                   </CardHeader>
                 </Card>
@@ -571,6 +681,19 @@ const Catalogo = () => {
             }}
             serieName={selectedSeries}
             serieData={selectedSeriesData}
+          />
+        )}
+
+        {/* Modal de Canais */}
+        {selectedChannel && (
+          <ChannelModal
+            isOpen={!!selectedChannel}
+            onClose={() => {
+              setSelectedChannel(null);
+              setSelectedChannelData(null);
+            }}
+            channelName={selectedChannel}
+            channelData={selectedChannelData}
           />
         )}
 

@@ -38,17 +38,45 @@ const SeriesModal = ({ isOpen, onClose, serieName, serieData }: SeriesModalProps
   const loadEpisodes = async () => {
     setLoading(true);
     try {
-      // Buscar todos os episódios da série
-      const { data } = await supabase
+      // Buscar todos os episódios da série usando múltiplas estratégias
+      let allEpisodes: any[] = [];
+      
+      // Busca 1: Nome exato com like
+      const { data: exactMatch } = await supabase
         .from('catalogo_m3u_live')
         .select('*')
         .eq('tipo', 'serie')
         .ilike('nome', `%${serieName}%`)
-        .eq('ativo', true)
-        .order('nome');
+        .eq('ativo', true);
 
-      if (data) {
-        const episodesWithSeasons = data.map(episode => {
+      if (exactMatch) {
+        allEpisodes = [...allEpisodes, ...exactMatch];
+      }
+
+      // Busca 2: Se poucos resultados, tentar variações
+      if (allEpisodes.length < 5) {
+        const serieWords = serieName.split(' ').filter(word => word.length > 2);
+        for (const word of serieWords) {
+          const { data: wordMatch } = await supabase
+            .from('catalogo_m3u_live')
+            .select('*')
+            .eq('tipo', 'serie')
+            .ilike('nome', `%${word}%`)
+            .eq('ativo', true);
+          
+          if (wordMatch) {
+            allEpisodes = [...allEpisodes, ...wordMatch];
+          }
+        }
+      }
+
+      // Remover duplicatas
+      const uniqueEpisodes = allEpisodes.filter((episode, index, self) => 
+        index === self.findIndex(e => e.id === episode.id)
+      );
+
+      if (uniqueEpisodes.length > 0) {
+        const episodesWithSeasons = uniqueEpisodes.map(episode => {
           const seasonMatch = episode.nome.match(/S(\d+)E(\d+)|T(\d+)E(\d+)|Temporada\s*(\d+).*Episódio\s*(\d+)/i);
           let temporada = 1;
           let episodio = 1;
@@ -63,6 +91,12 @@ const SeriesModal = ({ isOpen, onClose, serieName, serieData }: SeriesModalProps
             temporada,
             episodio
           };
+        }).sort((a, b) => {
+          // Ordenar por temporada primeiro, depois por episódio
+          if (a.temporada !== b.temporada) {
+            return a.temporada - b.temporada;
+          }
+          return a.episodio - b.episodio;
         });
 
         setEpisodes(episodesWithSeasons);
