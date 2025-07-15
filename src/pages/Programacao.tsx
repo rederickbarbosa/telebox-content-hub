@@ -24,6 +24,8 @@ const Programacao = () => {
 
   useEffect(() => {
     fetchProgramacao();
+    // Atualizar EPG automaticamente
+    updateEPG();
   }, []);
 
   useEffect(() => {
@@ -44,6 +46,23 @@ const Programacao = () => {
       console.error('Erro ao buscar programação:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const updateEPG = async () => {
+    try {
+      console.log('🔄 Atualizando EPG...');
+      const { data, error } = await supabase.functions.invoke('fetch-epg-xmltv');
+      
+      if (error) {
+        console.error('Erro ao atualizar EPG:', error);
+      } else {
+        console.log('✅ EPG atualizado:', data);
+        // Recarregar programação após atualização
+        fetchProgramacao();
+      }
+    } catch (error) {
+      console.error('Erro na atualização do EPG:', error);
     }
   };
 
@@ -146,6 +165,14 @@ const Programacao = () => {
               variant="outline"
             >
               Ver Tudo
+            </Button>
+
+            <Button 
+              onClick={updateEPG}
+              variant="default"
+              className="bg-telebox-blue hover:bg-telebox-blue/90"
+            >
+              Atualizar EPG
             </Button>
           </div>
         </div>
