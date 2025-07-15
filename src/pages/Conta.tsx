@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { User, Settings, Heart, Bell, BarChart3 } from "lucide-react";
+import NotificationViewer from "@/components/user/NotificationViewer";
 
 interface Profile {
   id: string;
@@ -262,7 +263,7 @@ const Conta = () => {
         </Card>
 
         <Tabs defaultValue="perfil" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="perfil" className="flex items-center gap-2">
               <User className="h-4 w-4" />
               Perfil
@@ -270,6 +271,10 @@ const Conta = () => {
             <TabsTrigger value="estatisticas" className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
               Estatísticas
+            </TabsTrigger>
+            <TabsTrigger value="notificacoes" className="flex items-center gap-2">
+              <Bell className="h-4 w-4" />
+              Notificações
             </TabsTrigger>
             <TabsTrigger value="configuracoes" className="flex items-center gap-2">
               <Settings className="h-4 w-4" />
@@ -392,6 +397,10 @@ const Conta = () => {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          <TabsContent value="notificacoes" className="space-y-6">
+            <NotificationViewer />
           </TabsContent>
 
           <TabsContent value="configuracoes" className="space-y-6">

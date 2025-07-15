@@ -591,6 +591,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
+      get_catalog_stats: {
+        Args: Record<PropertyKey, never>
+        Returns: Json
+      }
       prune_catalogo: {
         Args: Record<PropertyKey, never>
         Returns: undefined

@@ -19,6 +19,8 @@ import UserManager from "@/components/admin/UserManager";
 import EdgeFunctionTester from "@/components/admin/EdgeFunctionTester";
 import HomeManager from "@/components/admin/HomeManager";
 import PlansManager from "@/components/admin/PlansManager";
+import EpgManager from "@/components/admin/EpgManager";
+import ApiConfigManager from "@/components/admin/ApiConfigManager";
 
 const Admin = () => {
   const [user, setUser] = useState<any>(null);
@@ -206,137 +208,25 @@ const Admin = () => {
           </Card>
         </div>
 
-        <Tabs defaultValue="configuracoes" className="w-full">
-          <TabsList className="grid w-full grid-cols-7">
-            <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
-            <TabsTrigger value="home">Home</TabsTrigger>
-            <TabsTrigger value="planos">Planos</TabsTrigger>
+        <Tabs defaultValue="catalogo" className="w-full">
+          <TabsList className="grid w-full grid-cols-9">
             <TabsTrigger value="catalogo">Catálogo</TabsTrigger>
-            <TabsTrigger value="apps">Aplicativos</TabsTrigger>
-            <TabsTrigger value="notificacoes">Notificações</TabsTrigger>
+            <TabsTrigger value="epg">EPG</TabsTrigger>
+            <TabsTrigger value="planos">Planos</TabsTrigger>
+            <TabsTrigger value="apps">Apps</TabsTrigger>
+            <TabsTrigger value="home">Home</TabsTrigger>
             <TabsTrigger value="usuarios">Usuários</TabsTrigger>
+            <TabsTrigger value="notificacoes">Notificações</TabsTrigger>
+            <TabsTrigger value="configuracoes">Config</TabsTrigger>
+            <TabsTrigger value="testes">Testes</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="configuracoes" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Settings className="h-5 w-5" />
-                  Configurações Gerais
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="teste_horas">Teste Grátis (horas)</Label>
-                    <Input
-                      id="teste_horas"
-                      type="number"
-                      value={settings.teste_horas || ''}
-                      onChange={(e) => updateSetting('teste_horas', e.target.value)}
-                      placeholder="6"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="whatsapp_numero">Número WhatsApp</Label>
-                    <Input
-                      id="whatsapp_numero"
-                      value={settings.whatsapp_numero || ''}
-                      onChange={(e) => updateSetting('whatsapp_numero', e.target.value)}
-                      placeholder="5511911837288"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="plano_destaque">Plano em Destaque</Label>
-                    <Select
-                      value={settings.plano_destaque || '1'}
-                      onValueChange={(value) => updateSetting('plano_destaque', value)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1">1 Mês - R$ 30,00</SelectItem>
-                        <SelectItem value="2">2 Meses - R$ 55,00</SelectItem>
-                        <SelectItem value="3">3 Meses - R$ 80,00</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold">Redes Sociais</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <Label htmlFor="instagram_url">Instagram URL</Label>
-                      <Input
-                        id="instagram_url"
-                        value={settings.instagram_url || ''}
-                        onChange={(e) => updateSetting('instagram_url', e.target.value)}
-                        placeholder="https://instagram.com/teleboxbrasil"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="facebook_url">Facebook URL</Label>
-                      <Input
-                        id="facebook_url"
-                        value={settings.facebook_url || ''}
-                        onChange={(e) => updateSetting('facebook_url', e.target.value)}
-                        placeholder="https://facebook.com/teleboxbrasil"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="telegram_url">Telegram URL</Label>
-                      <Input
-                        id="telegram_url"
-                        value={settings.telegram_url || ''}
-                        onChange={(e) => updateSetting('telegram_url', e.target.value)}
-                        placeholder="https://t.me/teleboxbrasil"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h3 className="text-lg font-semibold">APIs e Integrações</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="tmdb_token">Token TMDB</Label>
-                      <Input
-                        id="tmdb_token"
-                        value={settings.tmdb_token || ''}
-                        onChange={(e) => updateSetting('tmdb_token', e.target.value)}
-                        placeholder="Token da API do TMDB"
-                        type="password"
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="epg_url">URL do EPG (XMLTV)</Label>
-                      <Input
-                        id="epg_url"
-                        value={settings.epg_url || ''}
-                        onChange={(e) => updateSetting('epg_url', e.target.value)}
-                        placeholder="http://exemplo.com/xmltv.php?username=...&password=..."
-                      />
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          <TabsContent value="catalogo">
+            <CatalogUploader onUploadComplete={loadStats} />
           </TabsContent>
 
-          <TabsContent value="home" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Home className="h-5 w-5" />
-                  Configurações da Home
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <HomeManager />
-              </CardContent>
-            </Card>
+          <TabsContent value="epg">
+            <EpgManager />
           </TabsContent>
 
           <TabsContent value="planos" className="space-y-6">
@@ -353,9 +243,38 @@ const Admin = () => {
             </Card>
           </TabsContent>
 
-          <TabsContent value="catalogo" className="space-y-6">
-            <CatalogUploader onUploadComplete={loadStats} />
-            
+          <TabsContent value="apps" className="space-y-6">
+            <PopulateApps />
+            <AppManager />
+          </TabsContent>
+
+          <TabsContent value="home" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Home className="h-5 w-5" />
+                  Configurações da Home
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <HomeManager />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="usuarios" className="space-y-6">
+            <UserManager />
+          </TabsContent>
+
+          <TabsContent value="notificacoes" className="space-y-6">
+            <NotificationManager />
+          </TabsContent>
+
+          <TabsContent value="configuracoes">
+            <ApiConfigManager />
+          </TabsContent>
+
+          <TabsContent value="testes" className="space-y-6">
             <EdgeFunctionTester userId={user.id} />
             
             <Card>
@@ -374,12 +293,12 @@ const Admin = () => {
                   onClick={async () => {
                     setLoading(true);
                     try {
-                      const response = await supabase.functions.invoke('fetch-epg-simple');
+                      const response = await supabase.functions.invoke('fetch-epg-xmltv');
                       if (response.error) throw new Error(response.error.message);
                       
                       toast({
                         title: "EPG atualizado!",
-                        description: `${response.data.programmes || 0} programas de ${response.data.channels || 0} canais atualizados.`,
+                        description: `${response.data.programas_processados || 0} programas processados.`,
                       });
                     } catch (error: any) {
                       toast({
@@ -398,19 +317,6 @@ const Admin = () => {
                 </Button>
               </CardContent>
             </Card>
-          </TabsContent>
-
-          <TabsContent value="apps" className="space-y-6">
-            <PopulateApps />
-            <AppManager />
-          </TabsContent>
-
-          <TabsContent value="notificacoes" className="space-y-6">
-            <NotificationManager />
-          </TabsContent>
-
-          <TabsContent value="usuarios" className="space-y-6">
-            <UserManager />
           </TabsContent>
         </Tabs>
       </div>
