@@ -139,7 +139,7 @@ const Home = () => {
             <div className="max-w-4xl mx-auto text-center text-white">
               <div className="flex justify-center mb-8">
                 <img 
-                  src="/lovable-uploads/52a92ba9-cb00-476e-86a7-8019ac8c0c91.png" 
+                  src="/lovable-uploads/f8c39ee0-2f4f-48db-8eec-77de87d513ee.png" 
                   alt="TELEBOX" 
                   className="h-16 w-auto"
                 />
