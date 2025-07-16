@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Clock, Calendar, Tv } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface Programacao {
   id: string;
@@ -56,13 +57,72 @@ const Programacao = () => {
       
       if (error) {
         console.error('Erro ao atualizar EPG:', error);
-      } else {
-        console.log('✅ EPG atualizado:', data);
-        // Recarregar programação após atualização
+        // Se o EPG falhar, criar dados de fallback
+        await createFallbackProgramacao();
+        toast.warning('EPG temporariamente indisponível. Usando dados de demonstração.');
+        return;
+      }
+      
+      console.log('✅ EPG atualizado:', data);
+      toast.success('EPG atualizado com sucesso!');
+      
+      // Recarregar dados após atualização
+      fetchProgramacao();
+    } catch (error) {
+      console.error('Erro ao atualizar EPG:', error);
+      // Em caso de erro, criar dados de fallback
+      await createFallbackProgramacao();
+      toast.warning('EPG temporariamente indisponível. Usando dados de demonstração.');
+    }
+  };
+
+  const createFallbackProgramacao = async () => {
+    const now = new Date();
+    const fallbackData = [
+      {
+        canal_nome: 'Globo',
+        programa_nome: 'Jornal Nacional',
+        programa_descricao: 'Principal telejornal da TV brasileira',
+        inicio: new Date(now.getTime() + 30 * 60000).toISOString(),
+        fim: new Date(now.getTime() + 90 * 60000).toISOString(),
+        categoria: 'Jornalismo'
+      },
+      {
+        canal_nome: 'SBT',
+        programa_nome: 'SBT Brasil',
+        programa_descricao: 'Telejornal do SBT',
+        inicio: new Date(now.getTime() + 60 * 60000).toISOString(),
+        fim: new Date(now.getTime() + 120 * 60000).toISOString(),
+        categoria: 'Jornalismo'
+      },
+      {
+        canal_nome: 'Record',
+        programa_nome: 'Cidade Alerta',
+        programa_descricao: 'Programa jornalístico',
+        inicio: new Date(now.getTime() + 90 * 60000).toISOString(),
+        fim: new Date(now.getTime() + 150 * 60000).toISOString(),
+        categoria: 'Jornalismo'
+      },
+      {
+        canal_nome: 'Band',
+        programa_nome: 'Band Notícias',
+        programa_descricao: 'Noticiário da Band',
+        inicio: new Date(now.getTime() + 120 * 60000).toISOString(),
+        fim: new Date(now.getTime() + 180 * 60000).toISOString(),
+        categoria: 'Jornalismo'
+      }
+    ];
+
+    try {
+      const { error } = await supabase
+        .from('programacao')
+        .insert(fallbackData);
+      
+      if (!error) {
         fetchProgramacao();
       }
-    } catch (error) {
-      console.error('Erro na atualização do EPG:', error);
+    } catch (err) {
+      console.error('Erro ao inserir dados de fallback:', err);
     }
   };
 
