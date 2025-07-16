@@ -36,6 +36,10 @@ serve(async (req) => {
 
     const xmltvUrl = settings?.setting_value || 'http://zed7.top/xmltv.php?username=spg9tct&password=r846kdc';
     
+    if (!xmltvUrl || xmltvUrl.trim() === '') {
+      throw new Error('URL do XMLTV não configurada');
+    }
+    
     console.log('📡 Buscando EPG de:', xmltvUrl);
 
     // Buscar XMLTV
@@ -121,10 +125,7 @@ serve(async (req) => {
       
       const { error } = await supabase
         .from('programacao')
-        .upsert(batch, { 
-          onConflict: 'canal_nome,inicio', 
-          ignoreDuplicates: false 
-        });
+        .insert(batch);
 
       if (error) {
         console.error('Erro ao inserir lote:', error);

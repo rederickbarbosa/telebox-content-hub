@@ -141,12 +141,12 @@ const ApiConfigManager = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Key className="h-6 w-6 text-telebox-blue" />
+        <Key className="h-6 w-6 text-primary" />
         <h2 className="text-2xl font-bold">Configurações de API</h2>
       </div>
 
       {/* TMDB Configuration */}
-      <Card className="shadow-telebox-card">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Settings className="h-5 w-5" />
@@ -184,7 +184,7 @@ const ApiConfigManager = () => {
       </Card>
 
       {/* OpenRouter Configuration */}
-      <Card className="shadow-telebox-card">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Settings className="h-5 w-5" />
@@ -233,7 +233,7 @@ const ApiConfigManager = () => {
       </Card>
 
       {/* WhatsApp Configuration */}
-      <Card className="shadow-telebox-card">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Settings className="h-5 w-5" />
@@ -260,12 +260,11 @@ const ApiConfigManager = () => {
       </Card>
 
       {/* Save Button */}
-      <Card className="shadow-telebox-card">
+      <Card>
         <CardContent className="pt-6">
           <Button 
             onClick={saveAllSettings}
             disabled={loading}
-            variant="telebox"
             className="w-full"
           >
             {loading ? "Salvando..." : "Salvar Todas as Configurações"}
@@ -274,7 +273,7 @@ const ApiConfigManager = () => {
       </Card>
 
       {/* Help */}
-      <Card className="bg-blue-50 border-blue-200 shadow-telebox-card">
+      <Card className="bg-blue-50 border-blue-200">
         <CardContent className="pt-6">
           <h4 className="font-semibold text-blue-800 mb-2">💡 Informações</h4>
           <ul className="text-sm text-blue-700 space-y-1">

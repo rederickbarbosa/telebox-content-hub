@@ -183,34 +183,34 @@ const EpgManager = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
-        <Tv className="h-6 w-6 text-telebox-blue" />
+        <Tv className="h-6 w-6 text-primary" />
         <h2 className="text-2xl font-bold">Gerenciamento EPG/XMLTV</h2>
       </div>
 
       {/* Estatísticas */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="shadow-telebox-card">
+        <Card>
           <CardContent className="pt-6">
             <div className="text-center">
-              <div className="text-2xl font-bold text-telebox-blue">{stats.total_programas}</div>
+              <div className="text-2xl font-bold text-primary">{stats.total_programas}</div>
               <p className="text-sm text-muted-foreground">Total de Programas</p>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="shadow-telebox-card">
+        <Card>
           <CardContent className="pt-6">
             <div className="text-center">
-              <div className="text-2xl font-bold text-green-500">{stats.canais_unicos}</div>
+              <div className="text-2xl font-bold text-green-600">{stats.canais_unicos}</div>
               <p className="text-sm text-muted-foreground">Canais Únicos</p>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="shadow-telebox-card">
+        <Card>
           <CardContent className="pt-6">
             <div className="text-center">
-              <div className="text-2xl font-bold text-yellow-500">{stats.proximas_24h}</div>
+              <div className="text-2xl font-bold text-yellow-600">{stats.proximas_24h}</div>
               <p className="text-sm text-muted-foreground">Próximas 24h</p>
             </div>
           </CardContent>
@@ -218,7 +218,7 @@ const EpgManager = () => {
       </div>
 
       {/* Configuração da URL */}
-      <Card className="shadow-telebox-card">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Settings className="h-5 w-5" />
@@ -245,7 +245,6 @@ const EpgManager = () => {
           <Button 
             onClick={saveEpgUrl}
             disabled={loading || !epgUrl}
-            variant="telebox"
           >
             {loading ? "Salvando..." : "Salvar URL"}
           </Button>
@@ -253,7 +252,7 @@ const EpgManager = () => {
       </Card>
 
       {/* Status e Ações */}
-      <Card className="shadow-telebox-card">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <RefreshCw className="h-5 w-5" />
@@ -275,8 +274,6 @@ const EpgManager = () => {
             <Button 
               onClick={updateEpg}
               disabled={updating || !epgUrl}
-              variant="default"
-              className="bg-telebox-blue hover:bg-telebox-blue/90"
             >
               {updating ? (
                 <>
