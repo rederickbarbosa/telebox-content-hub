@@ -568,15 +568,7 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: [
-          {
-            foreignKeyName: "user_content_status_conteudo_id_fkey"
-            columns: ["conteudo_id"]
-            isOneToOne: false
-            referencedRelation: "conteudos"
-            referencedColumns: ["id"]
-          },
-        ]
+        Relationships: []
       }
     }
     Views: {
