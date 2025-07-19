@@ -6,11 +6,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { Search, Play, ExternalLink, Star, Calendar, Users } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Search, Play, ExternalLink, Star, Calendar, Users, Grid, List } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import SeriesModal from "@/components/catalog/SeriesModal";
 import ChannelModal from "@/components/catalog/ChannelModal";
+import SeriesHierarchy from "@/components/catalog/SeriesHierarchy";
 
 interface Conteudo {
   id: string;
@@ -406,9 +408,15 @@ const Catalogo = () => {
           </div>
         </div>
 
-        {/* Grid de Conteúdos */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-          {filteredConteudos.map((conteudo) => {
+        {/* Visualização de Conteúdos */}
+        {tipoFilter === "serie" ? (
+          <SeriesHierarchy 
+            searchTerm={searchTerm}
+            genre={generoFilter !== "todos" ? generoFilter : undefined}
+          />
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+            {filteredConteudos.map((conteudo) => {
             // Tratamento especial para séries
             if (conteudo.tipo === 'serie') {
               return (
@@ -669,7 +677,8 @@ const Catalogo = () => {
             </Dialog>
             );
           })}
-        </div>
+          </div>
+        )}
 
         {/* Modal de Séries */}
         {selectedSeries && (
