@@ -583,6 +583,14 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
+      extract_season_episode: {
+        Args: { full_name: string }
+        Returns: Json
+      }
+      extract_series_name: {
+        Args: { full_name: string }
+        Returns: string
+      }
       get_catalog_stats: {
         Args: Record<PropertyKey, never>
         Returns: Json
