@@ -56,30 +56,22 @@ const Home = () => {
 
   const loadRealStats = async () => {
     try {
-      // Buscar estatísticas reais usando count
-      const [canaisResult, filmesResult, seriesResult] = await Promise.all([
-        supabase
-          .from('catalogo_m3u_live')
-          .select('*', { count: 'exact', head: true })
-          .eq('ativo', true)
-          .eq('tipo', 'canal'),
-        supabase
-          .from('catalogo_m3u_live')
-          .select('*', { count: 'exact', head: true })
-          .eq('ativo', true)
-          .eq('tipo', 'filme'),
-        supabase
-          .from('catalogo_m3u_live')
-          .select('*', { count: 'exact', head: true })
-          .eq('ativo', true)
-          .eq('tipo', 'serie')
-      ]);
-
-      const canais = canaisResult.count || 0;
-      const filmes = filmesResult.count || 0;
-      const series = seriesResult.count || 0;
+      // Usar a função do banco para buscar estatísticas corretas
+      const { data, error } = await supabase.rpc('get_catalog_stats');
       
-      setStats({ canais, filmes, series });
+      if (error) {
+        console.error('Erro ao carregar estatísticas:', error);
+        return;
+      }
+      
+      if (data && typeof data === 'object') {
+        const stats = data as { canais: number; filmes: number; series: number };
+        setStats({
+          canais: stats.canais || 0,
+          filmes: stats.filmes || 0,
+          series: stats.series || 0
+        });
+      }
     } catch (error) {
       console.error('Erro ao carregar estatísticas:', error);
     }
@@ -204,7 +196,7 @@ const Home = () => {
                 </div>
                 <div className="flex flex-col items-center">
                   <Clock className="h-8 w-8 mb-2 text-yellow-400" />
-                  <span className="text-lg font-bold text-white">{stats.series > 1000 ? `${(stats.series / 1000).toFixed(0)}K+` : stats.series.toLocaleString()}</span>
+                  <span className="text-lg font-bold text-white">{stats.series > 1000 ? `${(stats.series / 1000).toFixed(1)}K+` : stats.series.toLocaleString()}</span>
                   <span className="text-sm text-telebox-gray-light">{settings?.stats_series_label || 'Séries'}</span>
                 </div>
                 <div className="flex flex-col items-center">

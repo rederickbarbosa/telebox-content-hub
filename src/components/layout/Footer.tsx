@@ -109,10 +109,10 @@ const Footer = () => {
                 href={`https://wa.me/${settings.whatsapp_numero || '5511911837288'}?text=Olá! Preciso de ajuda com minha conta TELEBOX.`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center space-x-2 text-gray-300 hover:text-white transition-colors"
+                className="flex items-center space-x-2 text-gray-300 hover:text-green-400 transition-colors"
               >
-                <MessageCircle className="h-4 w-4 text-green-500" />
-                <span>Suporte via WhatsApp</span>
+                <MessageCircle className="h-4 w-4 text-green-400" />
+                <span className="text-gray-300 hover:text-white">Suporte via WhatsApp</span>
               </a>
               
               <div className="flex items-center space-x-2 text-gray-300">
