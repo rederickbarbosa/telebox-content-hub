@@ -168,10 +168,14 @@ const TrendingMovies = () => {
                   src={
                     content.tmdb_data?.poster_path 
                       ? `https://image.tmdb.org/t/p/w500${content.tmdb_data.poster_path}`
-                      : content.logo || "/placeholder.svg"
+                      : content.logo || "https://via.placeholder.com/300x450/1f2937/ffffff?text=TELEBOX"
                   }
                   alt={content.nome}
                   className="w-full h-64 object-cover group-hover:scale-105 transition-transform"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.src = "https://via.placeholder.com/300x450/1f2937/ffffff?text=TELEBOX";
+                  }}
                 />
                 <div className="absolute top-2 left-2">
                   <Badge variant="secondary" className="bg-red-600 text-white text-xs">
