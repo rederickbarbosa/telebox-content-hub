@@ -7,9 +7,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Search, Play, ExternalLink, Star, Calendar, Users, Grid, List } from "lucide-react";
+import { Search, Play, ExternalLink, Star, Calendar, Users, Grid, List, Heart } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useFavorites } from "@/hooks/useFavorites";
 import SeriesModal from "@/components/catalog/SeriesModal";
 import ChannelModal from "@/components/catalog/ChannelModal";
 import SeriesHierarchy from "@/components/catalog/SeriesHierarchy";
@@ -58,7 +59,9 @@ const Catalogo = () => {
   const [selectedSeriesData, setSelectedSeriesData] = useState<any>(null);
   const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
   const [selectedChannelData, setSelectedChannelData] = useState<any>(null);
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const { toast } = useToast();
+  const { favorites, isFavorite } = useFavorites();
 
   useEffect(() => {
     fetchConteudos();
@@ -66,7 +69,7 @@ const Catalogo = () => {
 
   useEffect(() => {
     filterConteudos();
-  }, [conteudos, searchTerm, tipoFilter, generoFilter, qualidadeFilter]);
+  }, [conteudos, searchTerm, tipoFilter, generoFilter, qualidadeFilter, showFavoritesOnly, favorites]);
 
   const fetchConteudos = async () => {
     try {
@@ -111,6 +114,12 @@ const Catalogo = () => {
 
   const filterConteudos = () => {
     let filtered = conteudos;
+
+    // Filtrar por favoritos se ativado
+    if (showFavoritesOnly) {
+      const favoriteIds = favorites.map(fav => fav.content_id);
+      filtered = filtered.filter(item => favoriteIds.includes(item.id));
+    }
 
     // Agrupar conteúdos baseado no tipo
     if (tipoFilter === "serie") {
@@ -395,11 +404,21 @@ const Catalogo = () => {
             </Select>
 
             <Button 
+              onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+              variant={showFavoritesOnly ? "default" : "outline"}
+              className={showFavoritesOnly ? "bg-red-600 hover:bg-red-700" : ""}
+            >
+              <Heart className={`h-4 w-4 mr-2 ${showFavoritesOnly ? 'fill-current' : ''}`} />
+              Favoritos
+            </Button>
+
+            <Button 
               onClick={() => {
                 setSearchTerm("");
                 setTipoFilter("todos");
                 setGeneroFilter("todos");
                 setQualidadeFilter("todos");
+                setShowFavoritesOnly(false);
               }}
               variant="outline"
             >

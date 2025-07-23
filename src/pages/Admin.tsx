@@ -315,6 +315,33 @@ const Admin = () => {
                 >
                   Atualizar Programação (EPG)
                 </Button>
+                
+                <Button 
+                  onClick={async () => {
+                    setLoading(true);
+                    try {
+                      const response = await supabase.functions.invoke('team-notifications');
+                      if (response.error) throw new Error(response.error.message);
+                      
+                      toast({
+                        title: "Notificações criadas!",
+                        description: `${response.data.notifications_created || 0} notificações de jogos criadas.`,
+                      });
+                    } catch (error: any) {
+                      toast({
+                        title: "Erro ao criar notificações",
+                        description: error.message,
+                        variant: "destructive",
+                      });
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  className="w-full"
+                  variant="outline"
+                >
+                  Processar Notificações de Times
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>

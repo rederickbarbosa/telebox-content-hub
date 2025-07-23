@@ -3,6 +3,8 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Star } from "lucide-react";
+import FavoriteButton from "@/components/user/FavoriteButton";
+import { useFavorites } from "@/hooks/useFavorites";
 
 interface CatalogCardProps {
   conteudo: {
@@ -23,6 +25,7 @@ interface CatalogCardProps {
 
 const CatalogCard = ({ conteudo, onClick }: CatalogCardProps) => {
   const [imageError, setImageError] = useState(false);
+  const { isFavorite, refresh } = useFavorites();
 
   const posterUrl = conteudo.tmdb_data?.poster_path 
     ? `https://image.tmdb.org/t/p/w500${conteudo.tmdb_data.poster_path}`
@@ -51,8 +54,17 @@ const CatalogCard = ({ conteudo, onClick }: CatalogCardProps) => {
             </Badge>
           )}
         </div>
+        <div className="absolute top-2 right-2">
+          <FavoriteButton
+            contentId={conteudo.id}
+            contentType={conteudo.tipo as 'canal' | 'filme' | 'serie'}
+            contentName={conteudo.nome}
+            isFavorite={isFavorite(conteudo.id, conteudo.tipo)}
+            onToggle={refresh}
+          />
+        </div>
         {conteudo.tmdb_data?.vote_average && (
-          <div className="absolute top-2 right-2">
+          <div className="absolute bottom-2 right-2">
             <Badge variant="secondary" className="bg-yellow-500 text-black text-xs">
               <Star className="h-3 w-3 mr-1" />
               {conteudo.tmdb_data.vote_average.toFixed(1)}

@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { User, Settings, Heart, Bell, BarChart3, Upload, Camera } from "lucide-react";
 import NotificationViewer from "@/components/user/NotificationViewer";
+import { useFavorites } from "@/hooks/useFavorites";
 
 interface Profile {
   id: string;
@@ -44,6 +45,7 @@ const Conta = () => {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { favorites, getFavoritesByType } = useFavorites();
 
   useEffect(() => {
     checkUser();
@@ -477,17 +479,49 @@ const Conta = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground mb-4">
-                    Você ainda não marcou nenhum conteúdo como favorito.
-                  </p>
-                  <Button 
-                    variant="outline"
-                    onClick={() => navigate('/catalogo')}
-                  >
-                    Explorar Catálogo
-                  </Button>
-                </div>
+                {favorites.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground mb-4">
+                      Você ainda não marcou nenhum conteúdo como favorito.
+                    </p>
+                    <Button 
+                      variant="outline"
+                      onClick={() => navigate('/catalogo')}
+                    >
+                      Explorar Catálogo
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-red-500">
+                          {getFavoritesByType('canal').length}
+                        </div>
+                        <p className="text-sm text-muted-foreground">Canais</p>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-blue-500">
+                          {getFavoritesByType('filme').length}
+                        </div>
+                        <p className="text-sm text-muted-foreground">Filmes</p>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-500">
+                          {getFavoritesByType('serie').length}
+                        </div>
+                        <p className="text-sm text-muted-foreground">Séries</p>
+                      </div>
+                    </div>
+                    <Button 
+                      variant="outline"
+                      onClick={() => navigate('/catalogo')}
+                      className="w-full"
+                    >
+                      Ver Todos os Favoritos
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
