@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { User, Settings, Heart, Bell, BarChart3 } from "lucide-react";
+import { User, Settings, Heart, Bell, BarChart3, Upload, Camera } from "lucide-react";
 import NotificationViewer from "@/components/user/NotificationViewer";
 
 interface Profile {
@@ -17,6 +17,8 @@ interface Profile {
   nome: string;
   email: string;
   user_id: string;
+  foto_url?: string;
+  time_favorito?: string;
 }
 
 interface UserStats {
@@ -39,6 +41,7 @@ const Conta = () => {
   const [updating, setUpdating] = useState(false);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -180,6 +183,58 @@ const Conta = () => {
     }
   };
 
+  const uploadProfilePhoto = async (file: File) => {
+    if (!profile || !user) return;
+
+    setUploadingPhoto(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${user.id}_${Date.now()}.${fileExt}`;
+      const filePath = `profile-photos/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('profile-photos')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('profile-photos')
+        .getPublicUrl(filePath);
+
+      await updateProfile({ foto_url: publicUrl });
+
+      toast({
+        title: "Foto atualizada",
+        description: "Sua foto de perfil foi atualizada com sucesso.",
+      });
+    } catch (error) {
+      console.error('Erro ao fazer upload da foto:', error);
+      toast({
+        title: "Erro no upload",
+        description: "Não foi possível atualizar sua foto de perfil.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "Arquivo muito grande",
+          description: "A imagem deve ter no máximo 5MB.",
+          variant: "destructive",
+        });
+        return;
+      }
+      uploadProfilePhoto(file);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -233,12 +288,33 @@ const Conta = () => {
         <Card className="mb-8 shadow-telebox-card">
           <CardContent className="pt-6">
             <div className="flex flex-col md:flex-row items-center gap-6">
-              <Avatar className="h-24 w-24">
-                <AvatarImage src="" />
-                <AvatarFallback className="text-2xl bg-telebox-blue text-white">
-                  {profile.nome.charAt(0).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
+              <div className="relative">
+                <Avatar className="h-24 w-24">
+                  <AvatarImage src={profile.foto_url || ""} />
+                  <AvatarFallback className="text-2xl bg-telebox-blue text-white">
+                    {profile.nome.charAt(0).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <Button
+                  size="sm"
+                  className="absolute -bottom-2 -right-2 h-8 w-8 rounded-full p-0"
+                  onClick={() => document.getElementById('photo-upload')?.click()}
+                  disabled={uploadingPhoto}
+                >
+                  {uploadingPhoto ? (
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  ) : (
+                    <Camera className="h-4 w-4" />
+                  )}
+                </Button>
+                <input
+                  id="photo-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                />
+              </div>
               
               <div className="text-center md:text-left flex-1">
                 <h2 className="text-2xl font-bold">{profile.nome}</h2>
@@ -310,8 +386,25 @@ const Conta = () => {
                   />
                 </div>
                 
+                <div className="space-y-2">
+                  <Label htmlFor="time-favorito">Time Favorito</Label>
+                  <Input
+                    id="time-favorito"
+                    value={profile.time_favorito || ""}
+                    onChange={(e) => setProfile({ ...profile, time_favorito: e.target.value })}
+                    placeholder="Ex: Corinthians, Flamengo, São Paulo..."
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Receive notificações quando seu time jogar
+                  </p>
+                </div>
+                
                 <Button 
-                  onClick={() => updateProfile({ nome: profile.nome, email: profile.email })}
+                  onClick={() => updateProfile({ 
+                    nome: profile.nome, 
+                    email: profile.email,
+                    time_favorito: profile.time_favorito || null
+                  })}
                   disabled={updating}
                   variant="telebox"
                 >

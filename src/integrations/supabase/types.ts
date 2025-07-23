@@ -365,6 +365,33 @@ export type Database = {
         }
         Relationships: []
       }
+      epg_cache: {
+        Row: {
+          canal_nome: string
+          data_programa: string
+          expires_at: string | null
+          id: string
+          last_updated: string | null
+          programas: Json
+        }
+        Insert: {
+          canal_nome: string
+          data_programa: string
+          expires_at?: string | null
+          id?: string
+          last_updated?: string | null
+          programas?: Json
+        }
+        Update: {
+          canal_nome?: string
+          data_programa?: string
+          expires_at?: string | null
+          id?: string
+          last_updated?: string | null
+          programas?: Json
+        }
+        Relationships: []
+      }
       notificacoes: {
         Row: {
           canal_nome: string | null
@@ -570,16 +597,51 @@ export type Database = {
         }
         Relationships: []
       }
+      user_favorites: {
+        Row: {
+          content_id: string
+          content_name: string
+          content_type: string
+          created_at: string | null
+          id: string
+          user_id: string
+        }
+        Insert: {
+          content_id: string
+          content_name: string
+          content_type: string
+          created_at?: string | null
+          id?: string
+          user_id: string
+        }
+        Update: {
+          content_id?: string
+          content_name?: string
+          content_type?: string
+          created_at?: string | null
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      cleanup_epg_cache: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       cleanup_m3u: {
         Args: { current_import_uuid: string }
         Returns: undefined
       }
       create_admin_user: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      create_team_notifications: {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
