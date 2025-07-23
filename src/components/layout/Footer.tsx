@@ -45,9 +45,9 @@ const Footer = () => {
           <div className="md:col-span-2">
             <div className="flex items-center space-x-3 mb-4">
               <img 
-                src="/lovable-uploads/52a92ba9-cb00-476e-86a7-8019ac8c0c91.png" 
+                src="/lovable-uploads/f8c39ee0-2f4f-48db-8eec-77de87d513ee.png" 
                 alt="TELEBOX" 
-                className="h-8 w-auto"
+                className="h-8 w-auto brightness-110"
               />
               <span className="text-2xl font-bold">TELEBOX</span>
             </div>
@@ -109,10 +109,10 @@ const Footer = () => {
                 href={`https://wa.me/${settings.whatsapp_numero || '5511911837288'}?text=Olá! Preciso de ajuda com minha conta TELEBOX.`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center space-x-2 text-gray-300 hover:text-green-400 transition-colors"
+                className="flex items-center space-x-2 text-white hover:text-green-400 transition-colors"
               >
                 <MessageCircle className="h-4 w-4 text-green-400" />
-                <span className="text-gray-300 hover:text-white">Suporte via WhatsApp</span>
+                <span className="text-white hover:text-green-400">Suporte via WhatsApp</span>
               </a>
               
               <div className="flex items-center space-x-2 text-gray-300">
