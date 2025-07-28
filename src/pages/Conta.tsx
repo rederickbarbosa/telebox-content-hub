@@ -12,6 +12,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { User, Settings, Heart, Bell, BarChart3, Upload, Camera } from "lucide-react";
 import NotificationViewer from "@/components/user/NotificationViewer";
 import { useFavorites } from "@/hooks/useFavorites";
+import { PhotoUpload } from "@/components/user/PhotoUpload";
+import { SmartRecommendations } from "@/components/catalog/SmartRecommendations";
 
 interface Profile {
   id: string;
@@ -524,6 +526,13 @@ const Conta = () => {
                 )}
               </CardContent>
             </Card>
+            
+            {/* Recomendações baseadas nos favoritos */}
+            {user && (
+              <div className="mt-8">
+                <SmartRecommendations userId={user.id} maxItems={6} />
+              </div>
+            )}
           </TabsContent>
 
           <TabsContent value="notificacoes" className="space-y-6">

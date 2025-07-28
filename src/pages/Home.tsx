@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { CheckCircle, Star, Play, Clock, Users, Globe } from "lucide-react";
 import ChannelCarousel from "@/components/home/ChannelCarousel";
 import TrendingMovies from "@/components/home/TrendingMovies";
+import { SmartRecommendations } from "@/components/catalog/SmartRecommendations";
 import { supabase } from "@/integrations/supabase/client";
 
 const Home = () => {
@@ -13,12 +14,14 @@ const Home = () => {
   const [stats, setStats] = useState({ canais: 50000, filmes: 20000, series: 10000 });
   const [settings, setSettings] = useState<any>(null);
   const [plans, setPlans] = useState<any[]>([]);
+  const [user, setUser] = useState<any>(null);
 
   useEffect(() => {
     loadBackgroundImages();
     loadRealStats();
     loadHomeSettings();
     loadPlans();
+    checkUser();
     
     // Trocar imagem de fundo a cada 5 segundos
     const interval = setInterval(() => {
@@ -29,6 +32,15 @@ const Home = () => {
 
     return () => clearInterval(interval);
   }, [backgroundImages.length]);
+
+  const checkUser = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    } catch (error) {
+      console.log('Usuário não logado');
+    }
+  };
 
   const loadBackgroundImages = async () => {
     try {
@@ -295,6 +307,13 @@ const Home = () => {
 
       {/* Channel Carousel */}
       {settings?.channel_carousel_enabled !== false && <ChannelCarousel />}
+      
+      {/* Recomendações inteligentes */}
+      <div className="py-20 bg-white">
+        <div className="container mx-auto px-4">
+          <SmartRecommendations userId={user?.id} maxItems={12} />
+        </div>
+      </div>
 
       {/* Features Section */}
       <div className="py-20 bg-gray-50">
